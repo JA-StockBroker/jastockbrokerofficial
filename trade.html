@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JA Trader Panel</title>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    input, button { padding: 6px 10px; margin: 5px; }
+    #chart { background: white; border-radius: 10px; margin-top: 20px; }
+    .section { margin-top: 30px; }
+    .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    .logout-btn { float: right; margin-top: -35px; }
+  </style>
+</head>
+<body>
+
+  <h1>Welcome, <span id="usernameDisplay"></span></h1>
+  <button class="logout-btn" onclick="logout()">🚪 Logout</button>
+
+  <p>Market Status: <span id="marketStatus">Checking...</span> | Live Price: ₹<span id="livePrice">--</span></p>
+  <p>Balance: ₹<span id="balanceDisplay">--</span></p>
+
+  <div>
+    <label>Qty:</label><input type="number" id="qty" value="1" min="1">
+    <label>TP:</label><input type="number" id="tp">
+    <label>SL:</label><input type="number" id="sl">
+    <button onclick="placeTrade('buy')">⬆ Buy</button>
+    <button onclick="placeTrade('sell')">⬇ Sell</button>
+  </div>
+
+  <div class="section">
+    <h2>Withdraw Funds</h2>
+    <input id="withdrawAmt" type="number" placeholder="Amount">
+    <input id="withdrawPhone" placeholder="WhatsApp Number">
+    <button onclick="requestWithdrawal()">Request Withdrawal</button>
+    <p style="color:orange">⚠️ 2% withdrawal fee applies on full capital.</p>
+  </div>
+
+  <div id="chart" style="height: 400px;"></div>
+
+  <div class="section">
+    <h2>Open Trades</h2>
+    <div id="openTrades"></div>
+  </div>
+
+  <div class="section">
+    <h2>Trade History</h2>
+    <div id="tradeHistory"></div>
+  </div>
+
+  <div class="section">
+    <h2>Performance Summary</h2>
+    <p>Total Trades: <span id="totalTrades">0</span> | Wins: <span id="wins">0</span> | Losses: <span id="losses">0</span></p>
+  </div>
+
+  <script>
+    const config = {
+      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
+      authDomain: "brokerja-74512.firebaseapp.com",
+      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "brokerja-74512",
+      storageBucket: "brokerja-74512.appspot.com",
+      messagingSenderId: "1048821297447",
+      appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
+    };
+    firebase.initializeApp(config);
+    const db = firebase.database();
+
+    const user = sessionStorage.getItem("username");
+    if (!user) location.href = "login.html";
+    document.getElementById("usernameDisplay").innerText = user;
+
+    const userRef = db.ref("users/" + user);
+    const priceRef = db.ref("market/currentPrice");
+    const marketRef = db.ref("market/isOpen");
+    const tradesRef = db.ref("users/" + user + "/trades");
+
+    let currentPrice = 1;
+    let balance = 0;
+    let chart;
+    let annotations = [];
+    let tradesCache = {};
+
+    priceRef.on("value", snap => {
+      currentPrice = parseFloat(snap.val());
+      document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
+      updateTrades(tradesCache);
+    });
+
+    userRef.child("balance").on("value", snap => {
+      balance = parseFloat(snap.val());
+      document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
+    });
+
+    marketRef.on("value", snap => {
+      document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
+    });
+
+    function placeTrade(type) {
+      marketRef.once("value", snap => {
+        if (!snap.val()) return alert("Market is closed");
+
+        const qty = parseInt(document.getElementById("qty").value);
+        const tp = parseFloat(document.getElementById("tp").value);
+        const sl = parseFloat(document.getElementById("sl").value);
+
+        const trade = {
+          type,
+          qty,
+          entry: currentPrice,
+          tp: isNaN(tp) ? null : tp,
+          sl: isNaN(sl) ? null : sl,
+          status: "open",
+          time: Date.now()
+        };
+
+        tradesRef.push(trade);
+        alert("Trade placed ✅");
+      });
+    }
+
+    function logout() {
+      sessionStorage.clear();
+      location.href = "login.html";
+    }
+
+    function requestWithdrawal() {
+      const amount = parseFloat(document.getElementById("withdrawAmt").value);
+      const contact = document.getElementById("withdrawPhone").value;
+      if (!amount || !contact) return alert("Fill all fields");
+      const req = { amount, contact, status: "pending", timestamp: Date.now() };
+      db.ref("users/" + user + "/withdrawalRequests").push(req);
+      alert("Withdrawal request submitted ✅");
+    }
+
+    db.ref("market/chart").on("value", snap => {
+      const data = snap.val();
+      const candles = [];
+      for (let k in data) {
+        const c = data[k];
+        candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
+      }
+      const lastCandle = candles[candles.length - 1];
+      const lastPrice = lastCandle?.y[3];
+      const annotation = {
+        y: lastPrice,
+        borderColor: '#ff0',
+        label: { borderColor: '#ff0', style: { color: '#000' }, text: 'Last Candle' }
+      };
+      if (!chart) {
+        chart = new ApexCharts(document.getElementById("chart"), {
+          chart: { type: 'candlestick', height: 400, id: 'mainChart' },
+          series: [{ data: candles }],
+          xaxis: { type: 'datetime' },
+          yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
+          annotations: { yaxis: [annotation, ...annotations] }
+        });
+        chart.render();
+      } else {
+        chart.updateSeries([{ data: candles }]);
+        chart.updateOptions({ annotations: { yaxis: [annotation, ...annotations] } });
+      }
+    });
+
+    tradesRef.on("value", snap => {
+      tradesCache = snap.val() || {};
+      updateTrades(tradesCache);
+    });
+
+    function updateTrades(trades) {
+      if (!trades) return;
+      let wins = 0, losses = 0, total = 0;
+      const openBox = document.getElementById("openTrades");
+      const histBox = document.getElementById("tradeHistory");
+      openBox.innerHTML = "";
+      histBox.innerHTML = "";
+      annotations = [];
+
+      for (let key in trades) {
+        const t = trades[key];
+        if (t.status === "closed") {
+          total++;
+          if ((t.pnl || 0) > 0) wins++;
+          else losses++;
+        }
+
+        if (t.status === "open") {
+          let closeTradeFlag = false;
+          if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) {
+            closeTradeFlag = true;
+          }
+          if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) {
+            closeTradeFlag = true;
+          }
+
+          if (closeTradeFlag) {
+            const pnl = (t.type === 'buy' ? (t.tp && currentPrice >= t.tp ? (t.tp - t.entry) : (t.entry - t.sl)) : (t.tp && currentPrice <= t.tp ? (t.entry - t.tp) : (t.sl - t.entry))) * t.qty;
+            tradesRef.child(key).update({ status: "closed", pnl });
+            userRef.child("balance").set(balance + pnl);
+            continue;
+          }
+        }
+
+        const pnl = t.status === "open" ? ((t.type === 'buy' ? (currentPrice - t.entry) : (t.entry - currentPrice)) * t.qty).toFixed(2) : t.pnl?.toFixed(2) || "--";
+        const div = document.createElement("div");
+        div.className = "trade-card";
+        div.innerHTML = `
+          ${t.type.toUpperCase()} ₹${t.entry} | Qty: ${t.qty}<br>
+          TP: ${t.tp || '-'} | SL: ${t.sl || '-'}<br>
+          P&L: ₹${pnl} <br>
+          ${new Date(t.time).toLocaleTimeString()}<br>
+          ${t.status === "open" ? `<button onclick="closeTrade('${key}', ${pnl})">❌ Close</button>` : ""}
+        `;
+        if (t.status === "open") openBox.appendChild(div);
+        else histBox.appendChild(div);
+
+        if (t.status === "open") {
+          annotations.push({ y: t.entry, borderColor: '#00f', label: { text: 'Entry' } });
+          if (t.tp) annotations.push({ y: t.tp, borderColor: '#0f0', label: { text: 'TP' } });
+          if (t.sl) annotations.push({ y: t.sl, borderColor: '#f00', label: { text: 'SL' } });
+        }
+      }
+
+      document.getElementById("totalTrades").innerText = total;
+      document.getElementById("wins").innerText = wins;
+      document.getElementById("losses").innerText = losses;
+    }
+
+    function closeTrade(key, pnl) {
+      tradesRef.child(key).update({ status: "closed", pnl: parseFloat(pnl) });
+      userRef.child("balance").set(balance + parseFloat(pnl));
+    }
+  </script>
+</body>
+</html>

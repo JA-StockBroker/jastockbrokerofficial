@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Login - JA Broker</title>
+  <style>
+    body {
+      background: #0c111b;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    input, button {
+      padding: 10px;
+      margin: 10px;
+      border: none;
+      border-radius: 5px;
+    }
+    input {
+      width: 250px;
+    }
+    button {
+      background-color: #00c853;
+      color: white;
+      cursor: pointer;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Admin Login</h2>
+  <input id="username" placeholder="Admin Username" />
+  <input id="password" type="password" placeholder="Password" />
+  <button onclick="adminLogin()">Login</button>
+
+  <script>
+    function adminLogin() {
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (username === "admin" && password === "jaAdmin2025") {
+        sessionStorage.setItem("admin", "true");
+        location.href = "admin.html";
+      } else {
+        alert("Invalid admin credentials ❌");
+      }
+    }
+  </script>
+</body>
+</html>

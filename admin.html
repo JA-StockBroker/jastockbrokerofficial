@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JA Stock Broker - Admin Panel</title>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    input, button { padding: 6px 10px; margin: 5px; }
+    #chart { background: white; border-radius: 10px; margin-top: 20px; }
+    .section { margin-top: 30px; }
+    .user-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 8px; border: 1px solid #444; color: white; }
+  </style>
+</head>
+<body>
+  <div id="loginBox">
+    <h2>Admin Login</h2>
+    <input id="adminUser" placeholder="Username">
+    <input id="adminPass" type="password" placeholder="Password">
+    <button onclick="adminLogin()">Login</button>
+  </div>
+
+  <div id="adminPanel" style="display:none;">
+    <h1>JA Stock Broker - Admin Panel</h1>
+
+    <label>Quantity:</label>
+    <input type="number" id="qty" value="1" min="1">
+    <button onclick="simulateCandle('buy')">⬆ Buy</button>
+    <button onclick="simulateCandle('sell')">⬇ Sell</button>
+    <p>Live Price: ₹<span id="livePrice">1.0</span></p>
+
+    <div>
+      <button onclick="openMarket()">✅ Open Market</button>
+      <button onclick="closeMarket()">❌ Close Market</button>
+      <button onclick="resetChart()" style="background:#f00;color:#fff;">🗑 Reset Chart</button>
+    </div>
+
+    <h2>Market Chart</h2>
+    <div id="chart"></div>
+
+    <div class="section">
+      <h2>Manage Users</h2>
+      <input id="newUsername" placeholder="Username">
+      <input id="newPassword" placeholder="Password">
+      <input id="newBalance" type="number" placeholder="Balance">
+      <button onclick="addUser()">Add User</button>
+      <div id="userList"></div>
+    </div>
+
+    <div class="section">
+      <h2>Withdrawals</h2>
+      <h3>Pending</h3>
+      <div id="pendingList"></div>
+      <h3>Approved</h3>
+      <div id="approvedList"></div>
+      <h3>Rejected</h3>
+      <div id="rejectedList"></div>
+    </div>
+  </div>
+
+  <script>
+    const config = {
+      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
+      authDomain: "brokerja-74512.firebaseapp.com",
+      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "brokerja-74512",
+      storageBucket: "brokerja-74512.appspot.com",
+      messagingSenderId: "1048821297447",
+      appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
+    };
+    firebase.initializeApp(config);
+    const db = firebase.database();
+    const priceRef = db.ref("market/currentPrice");
+    const chartRef = db.ref("market/chart");
+    const isOpenRef = db.ref("market/isOpen");
+    const usersRef = db.ref("users");
+
+    function adminLogin() {
+      const u = document.getElementById("adminUser").value;
+      const p = document.getElementById("adminPass").value;
+      if (u === "admin" && p === "jaAdmin2025") {
+        document.getElementById("loginBox").style.display = "none";
+        document.getElementById("adminPanel").style.display = "block";
+      } else {
+        alert("Incorrect admin credentials");
+      }
+    }
+
+    let currentPrice = 1.0;
+    priceRef.on("value", snap => {
+      currentPrice = parseFloat(snap.val());
+      document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
+    });
+
+    async function simulateCandle(type) {
+      const qty = parseInt(document.getElementById("qty").value);
+      const move = qty * 0.1;
+      const open = currentPrice;
+      const close = type === "buy" ? open + move : open - move;
+      const high = Math.max(open, close);
+      const low = Math.min(open, close);
+      const candle = { open, high, low, close, timestamp: Date.now() };
+      await chartRef.push(candle);
+      await priceRef.set(close);
+    }
+
+    function openMarket() {
+      isOpenRef.set(true).then(() => alert("Market opened ✅"));
+    }
+
+    function closeMarket() {
+      isOpenRef.set(false).then(() => alert("Market closed ❌"));
+    }
+
+    function resetChart() {
+      if (confirm("Reset chart and price to ₹1.0?")) {
+        chartRef.set({});
+        priceRef.set(1.0);
+      }
+    }
+
+    chartRef.on("value", snap => {
+      const data = snap.val();
+      const candles = [];
+      for (let key in data) {
+        const c = data[key];
+        candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
+      }
+      const chart = new ApexCharts(document.querySelector("#chart"), {
+        chart: { type: 'candlestick', height: 400 },
+        series: [{ data: candles }],
+        xaxis: { type: 'datetime' },
+        yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } }
+      });
+      chart.render();
+    });
+
+    async function addUser() {
+      const username = document.getElementById("newUsername").value.trim();
+      const password = document.getElementById("newPassword").value;
+      const balance = parseFloat(document.getElementById("newBalance").value);
+      if (!username || !password || isNaN(balance)) return alert("Fill all fields correctly");
+      await db.ref("users/" + username).set({ password, balance });
+      alert("User added successfully");
+    }
+
+    function updateBalance(username) {
+      const newBal = parseFloat(document.getElementById(`bal-${username}`).value);
+      if (isNaN(newBal)) return alert("Invalid balance");
+      db.ref("users/" + username + "/balance").set(newBal);
+    }
+
+    function deleteUser(username) {
+      if (confirm("Are you sure to delete " + username + "?")) {
+        db.ref("users/" + username).remove();
+      }
+    }
+
+    function approve(user, key) {
+      db.ref(`users/${user}/withdrawalRequests/${key}/status`).set("approved");
+      loadWithdrawals();
+    }
+
+    function reject(user, key) {
+      db.ref(`users/${user}/withdrawalRequests/${key}/status`).set("rejected");
+      loadWithdrawals();
+    }
+
+    function loadWithdrawals() {
+      document.getElementById("pendingList").innerHTML = "";
+      document.getElementById("approvedList").innerHTML = "";
+      document.getElementById("rejectedList").innerHTML = "";
+
+      usersRef.once("value", snap => {
+        const users = snap.val();
+        for (let uname in users) {
+          const withdrawals = users[uname].withdrawalRequests || {};
+          for (let key in withdrawals) {
+            const w = withdrawals[key];
+            const card = `<div class='user-card'>
+              <strong>${uname}</strong><br>
+              ₹${w.amount} - ${w.contact}<br>
+              <button onclick="approve('${uname}','${key}')">Approve</button>
+              <button onclick="reject('${uname}','${key}')">Reject</button>
+            </div>`;
+            if (w.status === "pending") document.getElementById("pendingList").innerHTML += card;
+            if (w.status === "approved") document.getElementById("approvedList").innerHTML += card;
+            if (w.status === "rejected") document.getElementById("rejectedList").innerHTML += card;
+          }
+        }
+      });
+    }
+
+    usersRef.on("value", snap => {
+      const users = snap.val();
+      const container = document.getElementById("userList");
+      container.innerHTML = "";
+      for (let username in users) {
+        const u = users[username];
+        const div = document.createElement("div");
+        div.className = "user-card";
+        div.innerHTML = `
+          <strong>${username}</strong><br>
+          Balance: ₹<input type="number" value="${u.balance}" id="bal-${username}"> 
+          <button onclick="updateBalance('${username}')">Update</button>
+          <button onclick="deleteUser('${username}')" style="background:red;color:white;">Delete</button>
+        `;
+        container.appendChild(div);
+      }
+    });
+
+    loadWithdrawals();
+  </script>
+</body>
+</html>
