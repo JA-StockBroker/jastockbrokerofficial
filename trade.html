@@ -141,7 +141,8 @@
       const candles = [];
       for (let k in data) {
         const c = data[k];
-        candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
+        let i = 0;
+        candles.push({ x: i++, y: [c.open, c.high, c.low, c.close] });
       }
       const lastCandle = candles[candles.length - 1];
       const lastPrice = lastCandle?.y[3];
@@ -154,7 +155,11 @@
         chart = new ApexCharts(document.getElementById("chart"), {
           chart: { type: 'candlestick', height: 400, id: 'mainChart' },
           series: [{ data: candles }],
-          xaxis: { type: 'datetime' },
+          xaxis: {
+  labels: { show: false },
+  tooltip: { enabled: false },
+  type: 'numeric'
+},
           yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
           annotations: { yaxis: [annotation, ...annotations] }
         });
@@ -236,3 +241,4 @@
   </script>
 </body>
 </html>
+
