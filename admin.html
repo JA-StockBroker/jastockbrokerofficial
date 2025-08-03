@@ -1,182 +1,144 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8">
-  <title>JA Admin Panel</title>
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <title>Admin Panel - JA Stock Broker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
   <style>
-    body { background: #0e1217; color: white; font-family: Arial; padding: 20px; }
-    input, button { padding: 6px 10px; margin: 5px; border-radius: 4px; }
-    #chart { background: white; border-radius: 10px; margin-top: 20px; }
-    .btn { padding: 10px 15px; border: none; border-radius: 6px; margin: 5px; font-weight: bold; cursor: pointer; }
-    .green { background: #28a745; color: white; }
-    .red { background: #dc3545; color: white; }
+    body { background: #0d1117; color: white; font-family: sans-serif; padding: 20px; }
+    input, button { margin: 5px 0; padding: 8px; font-size: 16px; }
+    button { cursor: pointer; }
     .section { margin-top: 30px; }
-    .card { background: #1c1f24; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    .card { background: #161b22; padding: 10px; margin: 5px 0; border-radius: 5px; }
+    .card button { margin: 0 5px; }
   </style>
 </head>
 <body>
-  <h2 id="time"></h2>
-  <button class="btn green" onclick="setMarket(true)">✅ Open Market</button>
-  <button class="btn red" onclick="setMarket(false)">❌ Close Market</button>
-  <button class="btn red" onclick="resetChart()">🗑️ Reset Chart</button>
+  <h2 id="clock"></h2>
+  <button id="openMarket">✅ Open Market</button>
+  <button id="closeMarket">❌ Close Market</button>
+  <button id="resetChart" style="background:red;color:white;">🗑️ Reset Chart</button>
 
   <div class="section">
     <h2>Market Chart</h2>
-    <div id="chart" style="height:400px;"></div>
+    <div id="chartContainer" style="height: 300px; border: 1px solid white; border-radius: 10px;"></div>
   </div>
 
   <div class="section">
     <h2>Manage Users</h2>
-    <input id="uname" placeholder="Username">
-    <input id="upass" placeholder="Password">
-    <input id="ubal" placeholder="Balance">
+    <input id="username" placeholder="Username">
+    <input id="password" placeholder="Password">
+    <input id="balance" placeholder="Balance">
     <button onclick="addUser()">Add User</button>
     <button onclick="updateUser()">Update User</button>
+    <button onclick="deleteUser()">Delete User</button>
   </div>
 
   <div class="section">
     <h2>Withdrawal Requests</h2>
     <h3>Pending</h3>
-    <div id="withdrawPending"></div>
+    <div id="pending"></div>
     <h3>Approved</h3>
-    <div id="withdrawApproved"></div>
+    <div id="approved"></div>
     <h3>Rejected</h3>
-    <div id="withdrawRejected"></div>
+    <div id="rejected"></div>
   </div>
 
   <script>
-    const config = {
-      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
       authDomain: "brokerja-74512.firebaseapp.com",
-      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
+      databaseURL: "https://brokerja-74512-default-rtdb.firebaseio.com",
       projectId: "brokerja-74512",
       storageBucket: "brokerja-74512.appspot.com",
-      messagingSenderId: "1048821297447",
-      appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
-    firebase.initializeApp(config);
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    function setMarket(state) {
-      db.ref("market/isOpen").set(state);
-      alert("Market " + (state ? "opened" : "closed"));
-    }
-
-    function resetChart() {
-      if (confirm("Reset entire chart?")) db.ref("market/chart").remove();
-    }
-
+    // Clock
     setInterval(() => {
-      const now = new Date();
-      document.getElementById("time").innerText = now.toLocaleTimeString();
+      document.getElementById('clock').textContent = new Date().toLocaleTimeString();
     }, 1000);
 
-    db.ref("market/chart").on("value", snap => {
-      const data = snap.val();
-      const candles = [];
-      let i = 0;
-      for (let k in data) {
-        const c = data[k];
-        candles.push({ x: i++, y: [c.open, c.high, c.low, c.close] });
-      }
-      const lastCandle = candles[candles.length - 1];
-      const annotation = lastCandle ? {
-        y: lastCandle.y[3],
-        borderColor: '#ff0',
-        label: { text: 'Last Candle', style: { color: '#000' }, borderColor: '#ff0' }
-      } : null;
-      const options = {
-        chart: { type: 'candlestick', height: 400 },
-        series: [{ data: candles }],
-        xaxis: { type: 'category' },
-        yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
-        annotations: { yaxis: annotation ? [annotation] : [] }
-      };
-      if (!window.chart) {
-        window.chart = new ApexCharts(document.getElementById("chart"), options);
-        window.chart.render();
-      } else {
-        window.chart.updateSeries([{ data: candles }]);
-        window.chart.updateOptions({ annotations: { yaxis: annotation ? [annotation] : [] } });
-      }
+    // Chart
+    const chart = LightweightCharts.createChart(document.getElementById('chartContainer'), {
+      layout: { backgroundColor: '#0d1117', textColor: 'white' },
+      grid: { vertLines: { color: '#444' }, horzLines: { color: '#444' } },
+      rightPriceScale: { borderVisible: false },
+      timeScale: { borderVisible: false }
+    });
+    const candleSeries = chart.addCandlestickSeries();
+
+    db.ref("chart").on("value", snap => {
+      const data = [];
+      snap.forEach(child => {
+        const d = child.val();
+        data.push({ time: d.t, open: d.o, high: d.h, low: d.l, close: d.c });
+      });
+      candleSeries.setData(data);
     });
 
+    // Market Controls
+    document.getElementById('openMarket').onclick = () => db.ref("market").set(true);
+    document.getElementById('closeMarket').onclick = () => db.ref("market").set(false);
+    document.getElementById('resetChart').onclick = () => db.ref("chart").remove();
+
+    // User Management
     function addUser() {
-      const u = document.getElementById("uname").value;
-      const p = document.getElementById("upass").value;
-      const b = parseFloat(document.getElementById("ubal").value);
-      if (!u || !p || isNaN(b)) return alert("Fill all fields");
+      const u = username.value, p = password.value, b = +balance.value;
       db.ref("users/" + u).set({ password: p, balance: b });
-      alert("User added ✅");
     }
-
     function updateUser() {
-      const u = document.getElementById("uname").value;
-      const p = document.getElementById("upass").value;
-      const b = parseFloat(document.getElementById("ubal").value);
-      if (!u || (!p && isNaN(b))) return alert("Enter username and at least one field to update");
-      if (p) db.ref("users/" + u + "/password").set(p);
-      if (!isNaN(b)) db.ref("users/" + u + "/balance").set(b);
-      alert("User updated ✅");
+      const u = username.value, p = password.value, b = +balance.value;
+      db.ref("users/" + u).update({ password: p, balance: b });
+    }
+    function deleteUser() {
+      const u = username.value;
+      db.ref("users/" + u).remove();
     }
 
-    db.ref("users").once("value", snap => {
-      const users = snap.val();
-      for (let uname in users) {
-        const ref = db.ref("users/" + uname + "/trades");
-        ref.on("value", tSnap => {
-          const trades = tSnap.val();
-          for (let id in trades) {
-            const t = trades[id];
-            if (t.status === "open") {
-              db.ref("users/" + uname + "/balance").once("value", bSnap => {
-                const bal = parseFloat(bSnap.val());
-                if (bal < 5) {
-                  const pnl = (t.type === "buy" ? (t.entry - t.entry) : (t.entry - t.entry)) * t.qty;
-                  ref.child(id).update({ status: "closed", pnl });
-                }
-              });
-            }
-          }
+    // Withdrawal Requests
+    const renderWithdrawals = () => {
+      ['pending', 'approved', 'rejected'].forEach(status => {
+        db.ref('withdrawals/' + status).on('value', snap => {
+          const container = document.getElementById(status);
+          container.innerHTML = '';
+          snap.forEach(child => {
+            const d = child.val();
+            const div = document.createElement('div');
+            div.className = 'card';
+            div.innerHTML = `<b>${d.name}</b><br>₹${d.amount} | ${d.whatsapp}<br>${d.time}<br>` +
+              (status === 'pending' ? `<button onclick="approve('${child.key}', ${d.amount}, '${d.user}')">✅ Approve</button><button onclick="reject('${child.key}')">❌ Reject</button>` : '');
+            container.appendChild(div);
+          });
         });
-      }
-    });
+      });
+    }
+    renderWithdrawals();
 
-    db.ref("users").on("value", snap => {
-      const users = snap.val();
-      document.getElementById("withdrawPending").innerHTML = "";
-      document.getElementById("withdrawApproved").innerHTML = "";
-      document.getElementById("withdrawRejected").innerHTML = "";
-
-      for (let uname in users) {
-        const w = users[uname].withdrawalRequests;
-        if (!w) continue;
-        for (let id in w) {
-          const r = w[id];
-          const el = document.createElement("div");
-          el.className = "card";
-          el.innerHTML = `
-            <b>${uname}</b><br>₹${r.amount} | ${r.contact}<br>
-            ${new Date(r.timestamp).toLocaleString()}<br>
-            <button onclick="approve('${uname}','${id}')">✅ Approve</button>
-            <button onclick="reject('${uname}','${id}')">❌ Reject</button>
-          `;
-          if (r.status === "pending") document.getElementById("withdrawPending").appendChild(el);
-          if (r.status === "approved") document.getElementById("withdrawApproved").appendChild(el);
-          if (r.status === "rejected") document.getElementById("withdrawRejected").appendChild(el);
-        }
-      }
-    });
-
-    function approve(user, id) {
-      db.ref(`users/${user}/withdrawalRequests/${id}/status`).set("approved");
+    function approve(id, amount, user) {
+      db.ref('withdrawals/pending/' + id).once('value').then(snap => {
+        db.ref('withdrawals/approved/' + id).set(snap.val());
+        db.ref('withdrawals/pending/' + id).remove();
+        db.ref('users/' + user + '/balance').once('value').then(balSnap => {
+          const newBal = balSnap.val() - amount;
+          db.ref('users/' + user).update({ balance: newBal });
+        });
+      });
     }
 
-    function reject(user, id) {
-      db.ref(`users/${user}/withdrawalRequests/${id}/status`).set("rejected");
+    function reject(id) {
+      db.ref('withdrawals/pending/' + id).once('value').then(snap => {
+        db.ref('withdrawals/rejected/' + id).set(snap.val());
+        db.ref('withdrawals/pending/' + id).remove();
+      });
     }
   </script>
 </body>
