@@ -138,20 +138,23 @@ async function simulateCandle(type) {
 
     chartRef.on("value", snap => {
       const data = snap.val();
-      const candles = [];
-      for (let key in data) {
-        const c = data[key];
-        let i = 0;
-        candles.push({ x: i++, y: [c.open, c.high, c.low, c.close] });
-      }
+      let candles = [];
+let i = 0;
+for (let key in data) {
+  const c = data[key];
+  candles.push({
+    x: i++, // ensures each candle is spaced
+    y: [c.open, c.high, c.low, c.close]
+  });
+}
       const chart = new ApexCharts(document.querySelector("#chart"), {
         chart: { type: 'candlestick', height: 400 },
         series: [{ data: candles }],
         xaxis: {
-  labels: { show: false },
-  tooltip: { enabled: false },
-  type: 'numeric'
-},
+  type: 'numeric',
+  labels: { show: false },   // optional: hide labels
+  tooltip: { enabled: false } // optional: disable tooltips
+}
         yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } }
       });
       chart.render();
@@ -235,5 +238,6 @@ async function simulateCandle(type) {
   </script>
 </body>
 </html>
+
 
 
