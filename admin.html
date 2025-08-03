@@ -2,50 +2,50 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Panel - JA Stock Broker</title>
+  <title>Admin Panel</title>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
-    body {
-      background: #0d1117;
-      color: white;
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    .btn {
-      padding: 8px 12px;
-      margin: 5px;
-      border-radius: 8px;
-      border: none;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    .open { background: #2ea043; color: white; }
-    .close { background: #da3633; color: white; }
-    .reset { background: red; color: white; }
-    #chart { background: white; border-radius: 10px; margin-top: 20px; height: 400px; }
-    .user-box { margin-top: 30px; }
-    input { padding: 6px; margin: 4px; border-radius: 4px; border: none; }
+    body { background: #0f172a; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    input, button { padding: 6px 10px; margin: 5px; }
+    #chart { background: white; border-radius: 10px; margin-top: 20px; }
+    .btn { padding: 10px 15px; border: none; border-radius: 10px; cursor: pointer; }
+    .green { background: green; color: white; }
+    .red { background: red; color: white; }
+    .section { margin-top: 30px; }
+    .user-card, .withdraw-card { background: #1e293b; padding: 10px; margin: 10px 0; border-radius: 8px; }
   </style>
 </head>
 <body>
   <h2 id="clock"></h2>
 
-  <button class="btn open" onclick="openMarket()">✅ Open Market</button>
-  <button class="btn close" onclick="closeMarket()">❌ Close Market</button>
-  <button class="btn reset" onclick="resetChart()">🗑 Reset Chart</button>
+  <div>
+    <label>Quantity:</label><input id="qty" type="number" value="1" min="1">
+    <button onclick="addCandle('buy')" class="btn">⬆️ Buy</button>
+    <button onclick="addCandle('sell')" class="btn">⬇️ Sell</button>
+  </div>
+  <p>Live Price: ₹<span id="livePrice">--</span></p>
+
+  <button class="btn green" onclick="setMarket(true)">✅ Open Market</button>
+  <button class="btn red" onclick="setMarket(false)">❌ Close Market</button>
+  <button class="btn red" onclick="resetChart()">🗑️ Reset Chart</button>
 
   <h2>Market Chart</h2>
-  <div id="chart"></div>
+  <div id="chart" style="height: 400px;"></div>
 
-  <div class="user-box">
+  <div class="section">
     <h2>Manage Users</h2>
-    <input id="username" placeholder="Username">
-    <input id="password" placeholder="Password">
-    <input id="balance" type="number" placeholder="Balance">
-    <button class="btn" onclick="addUser()">Add User</button>
+    <input id="newUser" placeholder="Username">
+    <input id="newPass" placeholder="Password">
+    <input id="newBal" type="number" placeholder="Balance">
+    <button onclick="addUser()">Add User</button>
+    <div id="lastUsers"></div>
+  </div>
+
+  <div class="section">
+    <h2>Withdrawal Requests</h2>
+    <div id="withdrawals"></div>
   </div>
 
   <script>
@@ -61,66 +61,121 @@
     firebase.initializeApp(config);
     const db = firebase.database();
 
-    const marketRef = db.ref("market");
-    const chartRef = marketRef.child("chart");
-    const priceRef = marketRef.child("currentPrice");
-    const isOpenRef = marketRef.child("isOpen");
-
-    let currentPrice = 1;
     let chart;
-    let chartData = [];
+    let series = [];
+    let price = 1;
 
-    priceRef.on("value", snap => currentPrice = parseFloat(snap.val()));
-
-    function openMarket() {
-      isOpenRef.set(true);
-      alert("Market Opened ✅");
+    function updateClock() {
+      const now = new Date();
+      document.getElementById("clock").innerText = now.toLocaleTimeString();
     }
+    setInterval(updateClock, 1000);
+    updateClock();
 
-    function closeMarket() {
-      isOpenRef.set(false);
-      alert("Market Closed ❌");
+    function setMarket(open) {
+      db.ref("market/isOpen").set(open);
     }
 
     function resetChart() {
-      chartRef.set({});
-      alert("Chart reset 🗑");
+      db.ref("market/chart").remove();
     }
 
+    function addCandle(type) {
+      const qty = parseInt(document.getElementById("qty").value);
+      const ref = db.ref("market/chart");
+      ref.once("value", snap => {
+        const data = snap.val() || {};
+        const keys = Object.keys(data);
+        const last = data[keys[keys.length - 1]];
+        const open = last ? last.close : 1;
+        const change = (Math.random() * 2 + 0.1) * qty;
+        const close = type === "buy" ? open + change : open - change;
+        const high = Math.max(open, close) + Math.random();
+        const low = Math.min(open, close) - Math.random();
+        const candle = { open, high, low, close, timestamp: Date.now() };
+        db.ref("market/currentPrice").set(close);
+        ref.push(candle);
+      });
+    }
+
+    db.ref("market/currentPrice").on("value", snap => {
+      price = parseFloat(snap.val());
+      document.getElementById("livePrice").innerText = price.toFixed(2);
+    });
+
+    db.ref("market/chart").on("value", snap => {
+      const data = snap.val();
+      series = [];
+      let i = 0;
+      for (let k in data) {
+        const c = data[k];
+        series.push({ x: i++, y: [c.open, c.high, c.low, c.close] });
+      }
+      const annotation = series.length > 0 ? {
+        y: series[series.length - 1].y[3],
+        borderColor: '#ff0',
+        label: { text: 'Last Candle', borderColor: '#ff0', style: { color: '#000' } }
+      } : null;
+      if (!chart) {
+        chart = new ApexCharts(document.querySelector("#chart"), {
+          chart: { type: 'candlestick', height: 400 },
+          series: [{ data: series }],
+          xaxis: { type: 'category', labels: { show: false } },
+          yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
+          annotations: { yaxis: annotation ? [annotation] : [] }
+        });
+        chart.render();
+      } else {
+        chart.updateSeries([{ data: series }]);
+        chart.updateOptions({ annotations: { yaxis: annotation ? [annotation] : [] } });
+      }
+    });
+
     function addUser() {
-      const u = document.getElementById("username").value.trim();
-      const p = document.getElementById("password").value.trim();
-      const b = parseFloat(document.getElementById("balance").value);
+      const u = document.getElementById("newUser").value;
+      const p = document.getElementById("newPass").value;
+      const b = parseFloat(document.getElementById("newBal").value);
       if (!u || !p || isNaN(b)) return alert("Fill all fields");
       db.ref("users/" + u).set({ password: p, balance: b });
       alert("User added ✅");
     }
 
-    chartRef.on("value", snap => {
+    db.ref("users").on("value", snap => {
       const data = snap.val() || {};
-      chartData = Object.values(data).map(c => ({ x: c.timestamp, y: [c.open, c.high, c.low, c.close] }));
-      if (!chart) {
-        chart = new ApexCharts(document.querySelector("#chart"), {
-          chart: { type: 'candlestick', height: 400 },
-          series: [{ data: chartData }],
-          xaxis: {
-            type: 'category',
-            labels: { show: false },
-            tooltip: { enabled: false }
-          },
-          yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
-          tooltip: { x: { show: false } }
-        });
-        chart.render();
-      } else {
-        chart.updateSeries([{ data: chartData }]);
-      }
+      const userDiv = document.getElementById("lastUsers");
+      userDiv.innerHTML = "<h3>Last Users:</h3>";
+      const keys = Object.keys(data).slice(-5);
+      keys.forEach(k => {
+        userDiv.innerHTML += `<div class="user-card">👤 ${k}<br>₹${data[k].balance || 0}</div>`;
+      });
+
+      const wdDiv = document.getElementById("withdrawals");
+      wdDiv.innerHTML = "";
+      keys.forEach(user => {
+        const wd = data[user].withdrawalRequests || {};
+        for (let key in wd) {
+          const r = wd[key];
+          wdDiv.innerHTML += `<div class="withdraw-card">User: ${user}<br>₹${r.amount} | 📞 ${r.contact}<br>Status: ${r.status}<br>
+            <button onclick="approveWithdrawal('${user}','${key}',${r.amount})">✅ Approve</button>
+            <button onclick="rejectWithdrawal('${user}','${key}')">❌ Reject</button>
+          </div>`;
+        }
+      });
     });
 
-    // Live Clock
-    setInterval(() => {
-      document.getElementById("clock").innerText = new Date().toLocaleTimeString();
-    }, 1000);
+    function approveWithdrawal(user, key, amt) {
+      const fee = amt * 0.02;
+      const finalAmt = amt - fee;
+      db.ref(`users/${user}/withdrawalRequests/${key}/status`).set("approved");
+      db.ref(`users/${user}/balance`).once("value", snap => {
+        const bal = parseFloat(snap.val());
+        db.ref(`users/${user}/balance`).set(bal - amt);
+      });
+    }
+
+    function rejectWithdrawal(user, key) {
+      db.ref(`users/${user}/withdrawalRequests/${key}/status`).set("rejected");
+    }
   </script>
 </body>
 </html>
