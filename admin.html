@@ -96,18 +96,30 @@
       currentPrice = parseFloat(snap.val());
       document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
     });
+// This rounds timestamps to the nearest 30 seconds to avoid chart gaps
+async function simulateCandle(type) {
+  const qty = parseInt(document.getElementById("qty").value);
+  const move = qty * 0.10;
+  const open = currentPrice;
+  const close = type === "buy" ? open + move : open - move;
+  const high = Math.max(open, close);
+  const low = Math.min(open, close);
 
-    async function simulateCandle(type) {
-      const qty = parseInt(document.getElementById("qty").value);
-      const move = qty * 0.1;
-      const open = currentPrice;
-      const close = type === "buy" ? open + move : open - move;
-      const high = Math.max(open, close);
-      const low = Math.min(open, close);
-      const candle = { open, high, low, close, timestamp: Date.now() };
-      await chartRef.push(candle);
-      await priceRef.set(close);
-    }
+  // ✅ Round time to nearest 30 seconds
+  const now = Date.now();
+  const roundedTimestamp = Math.floor(now / 30000) * 30000;
+
+  const candle = {
+    open,
+    high,
+    low,
+    close,
+    timestamp: roundedTimestamp
+  };
+
+  await chartRef.push(candle);
+  await priceRef.set(close);
+}
 
     function openMarket() {
       isOpenRef.set(true).then(() => alert("Market opened ✅"));
@@ -218,3 +230,4 @@
   </script>
 </body>
 </html>
+
