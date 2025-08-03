@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JA Trader Panel</title>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -139,9 +140,9 @@
     db.ref("market/chart").on("value", snap => {
       const data = snap.val();
       const candles = [];
+      let i = 0;
       for (let k in data) {
         const c = data[k];
-        let i = 0;
         candles.push({ x: i++, y: [c.open, c.high, c.low, c.close] });
       }
       const lastCandle = candles[candles.length - 1];
@@ -155,11 +156,7 @@
         chart = new ApexCharts(document.getElementById("chart"), {
           chart: { type: 'candlestick', height: 400, id: 'mainChart' },
           series: [{ data: candles }],
-          xaxis: {
-  labels: { show: false },
-  tooltip: { enabled: false },
-  type: 'numeric'
-},
+          xaxis: { type: 'numeric', labels: { show: false }, tooltip: { enabled: false } },
           yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
           annotations: { yaxis: [annotation, ...annotations] }
         });
@@ -241,4 +238,3 @@
   </script>
 </body>
 </html>
-
