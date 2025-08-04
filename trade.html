@@ -1,152 +1,186 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>JA Stock Broker - Trade</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      background: #0a0f1c;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-    }
-    h2, h3 {
-      margin-top: 20px;
-    }
-    input, button {
-      padding: 8px;
-      margin: 5px 0;
-      border-radius: 5px;
-      border: none;
-    }
-    button {
-      background: #007bff;
-      color: white;
-    }
-    canvas {
-      background: #fff;
-      margin: 20px 0;
-    }
-    .trade-item {
-      background: #1e1e2f;
-      padding: 10px;
-      margin-bottom: 10px;
-      border-radius: 5px;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JA Stock Broker - Trader</title>
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database-compat.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body>
-  <h2>JA Stock Broker - Trade Panel</h2>
-  <p>Balance: ₹<span id="balance">0.00</span></p>
+<body class="bg-gray-900 text-white">
+  <div class="p-4 max-w-screen-md mx-auto">
+    <h1 class="text-2xl font-bold mb-4">JA Stock Trader</h1>
 
-  <label>Quantity:</label>
-  <input type="number" id="quantity" value="1"><br>
+    <div class="mb-4">
+      <p>Welcome, <span id="usernameDisplay"></span></p>
+      <p>Balance: ₹<span id="balanceDisplay"></span></p>
+    </div>
 
-  <label>TP:</label>
-  <input type="number" id="tp"><br>
+    <div class="grid grid-cols-2 gap-2 mb-4">
+      <input id="quantity" type="number" placeholder="Quantity" class="p-2 text-black rounded">
+      <input id="tp" type="number" placeholder="Take Profit ₹" class="p-2 text-black rounded">
+      <input id="sl" type="number" placeholder="Stop Loss ₹" class="p-2 text-black rounded">
+      <div class="flex space-x-2">
+        <button onclick="placeTrade('buy')" class="bg-green-500 px-4 py-2 rounded">Buy</button>
+        <button onclick="placeTrade('sell')" class="bg-red-500 px-4 py-2 rounded">Sell</button>
+      </div>
+    </div>
 
-  <label>SL:</label>
-  <input type="number" id="sl"><br>
+    <div id="chart" class="mb-6 h-64"></div>
+    <p>Live Price: ₹<span id="livePrice"></span></p>
 
-  <button onclick="placeTrade('buy')">Buy</button>
-  <button onclick="placeTrade('sell')">Sell</button>
+    <div class="mb-6">
+      <h2 class="text-xl font-semibold mb-2">Open Trades</h2>
+      <div id="openTrades" class="space-y-2"></div>
+    </div>
 
-  <p>Live PnL: ₹<span id="livePnl">0.00</span></p>
+    <div class="mb-6">
+      <h2 class="text-xl font-semibold mb-2">Withdrawal Request</h2>
+      <input id="withdrawAmount" placeholder="Amount" class="p-2 text-black rounded mb-2 w-full">
+      <input id="withdrawWhatsApp" placeholder="WhatsApp Number" class="p-2 text-black rounded mb-2 w-full">
+      <button onclick="requestWithdrawal()" class="bg-blue-500 px-4 py-2 rounded">Request Withdrawal</button>
+      <p class="text-yellow-400 text-sm mt-2">⚠️ 2% withdrawal fee applies. Payout in 2 business days.</p>
+    </div>
 
-  <canvas id="chartCanvas" width="360" height="240"></canvas>
-
-  <h3>Request Withdrawal</h3>
-  <input type="number" id="withdrawAmount" placeholder="Amount">
-  <input type="text" id="whatsapp" placeholder="WhatsApp Number">
-  <button onclick="requestWithdrawal()">Request Withdrawal</button>
-  <p style="color: orange">⚠️ 2% withdrawal fee applies on full capital.</p>
-
-  <h3>Open Trades</h3>
-  <div id="openTrades"></div>
-
-  <h3>Trade History</h3>
-  <div id="tradeHistory"></div>
+    <div>
+      <h2 class="text-xl font-semibold mb-2">Trade History</h2>
+      <div id="tradeHistory" class="space-y-2"></div>
+    </div>
+  </div>
 
   <script>
-    const chartCanvas = document.getElementById('chartCanvas');
-    const ctx = chartCanvas.getContext('2d');
+    const firebaseConfig = {
+      apiKey: "AIzaSyDV-E3ZJ0LPebK3yd19glE4aJOLqWOUdOg",
+      authDomain: "brokerja-74512.firebaseapp.com",
+      databaseURL: "https://brokerja-74512-default-rtdb.firebaseio.com",
+      projectId: "brokerja-74512",
+      storageBucket: "brokerja-74512.appspot.com",
+      messagingSenderId: "293216906360",
+      appId: "1:293216906360:web:3d5b489bf218979dd4a4c2"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    let user = 'demoUser'; // replace with dynamic login user
-    let trades = [];
+    let username = localStorage.getItem('username');
+    if (!username) username = prompt("Enter your username:");
+    localStorage.setItem('username', username);
+    document.getElementById("usernameDisplay").textContent = username;
+
+    const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+      layout: {
+        background: { color: '#111827' },
+        textColor: '#D1D5DB'
+      },
+      grid: { vertLines: { visible: true }, horzLines: { visible: true } },
+      crosshair: { mode: 1 },
+      rightPriceScale: { visible: true },
+      timeScale: { visible: true, timeVisible: true, secondsVisible: true },
+    });
+    const candleSeries = chart.addCandlestickSeries();
+    let lineSeries = [];
 
     function drawChart() {
-      ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
-
-      trades.forEach((trade, i) => {
-        const x = 20 + i * 30;
-        const y = chartCanvas.height - trade.price * 10;
-        ctx.fillStyle = trade.type === 'buy' ? 'green' : 'red';
-        ctx.fillRect(x, y, 10, 10);
-
-        // TP, SL, Entry lines
-        ctx.strokeStyle = 'blue';
-        ctx.beginPath();
-        ctx.moveTo(x - 5, chartCanvas.height - trade.tp * 10);
-        ctx.lineTo(x + 15, chartCanvas.height - trade.tp * 10);
-        ctx.stroke();
-
-        ctx.strokeStyle = 'orange';
-        ctx.beginPath();
-        ctx.moveTo(x - 5, chartCanvas.height - trade.sl * 10);
-        ctx.lineTo(x + 15, chartCanvas.height - trade.sl * 10);
-        ctx.stroke();
+      db.ref("chart").on("value", snapshot => {
+        const data = snapshot.val() || [];
+        candleSeries.setData(data);
+        if (data.length > 0) {
+          const last = data[data.length - 1];
+          document.getElementById("livePrice").textContent = last.close.toFixed(2);
+        }
       });
     }
+
+    drawChart();
 
     function placeTrade(type) {
-      const qty = parseInt(document.getElementById('quantity').value);
-      const tp = parseFloat(document.getElementById('tp').value);
-      const sl = parseFloat(document.getElementById('sl').value);
-      const price = parseFloat(document.getElementById('balance').innerText); // simulate current price
+      const qty = parseInt(document.getElementById("quantity").value);
+      const tp = parseFloat(document.getElementById("tp").value);
+      const sl = parseFloat(document.getElementById("sl").value);
 
-      if ((type === 'buy' && (tp <= price || sl >= price)) ||
-          (type === 'sell' && (tp >= price || sl <= price))) {
-        alert('Invalid TP/SL based on direction.');
-        return;
+      if (!qty || qty <= 0 || !tp || !sl) return alert("Enter valid quantity, TP, and SL");
+
+      const entry = parseFloat(document.getElementById("livePrice").textContent);
+      if ((type === 'buy' && (tp <= entry || sl >= entry)) ||
+          (type === 'sell' && (tp >= entry || sl <= entry))) {
+        return alert("Invalid TP/SL levels for " + type.toUpperCase());
       }
 
-      const trade = { type, qty, tp, sl, price };
-      trades.push(trade);
-      updateOpenTrades();
-      drawChart();
-    }
+      db.ref("users/" + username).once("value", snap => {
+        const balance = snap.val().balance;
+        if (balance < 5) return alert("Insufficient balance (min ₹5 required)");
 
-    function updateOpenTrades() {
-      const container = document.getElementById('openTrades');
-      container.innerHTML = '';
-      trades.forEach((trade, i) => {
-        const div = document.createElement('div');
-        div.className = 'trade-item';
-        div.innerHTML = `${trade.type.toUpperCase()} @ ₹${trade.price} | TP ₹${trade.tp} | SL ₹${trade.sl} 
-        <button onclick="closeTrade(${i})">Close</button>`;
-        container.appendChild(div);
+        const trade = {
+          type, qty, tp, sl, entry,
+          open: true, time: Date.now()
+        };
+        db.ref("users/" + username + "/trades").push(trade);
       });
     }
 
-    function closeTrade(index) {
-      const trade = trades[index];
-      // You can add PnL calculation here
-      trades.splice(index, 1);
-      updateOpenTrades();
-      drawChart();
+    function loadTrades() {
+      db.ref("users/" + username + "/trades").on("value", snap => {
+        const data = snap.val() || {};
+        const container = document.getElementById("openTrades");
+        container.innerHTML = "";
+        Object.entries(data).forEach(([id, trade]) => {
+          if (!trade.open) return;
+          const pnl = (trade.type === 'buy' ? 1 : -1) * (parseFloat(document.getElementById("livePrice").textContent) - trade.entry) * trade.qty;
+
+          // Draw chart lines
+          const eLine = chart.addLineSeries({ color: '#00f', lineWidth: 1 });
+          const tLine = chart.addLineSeries({ color: '#0f0', lineWidth: 1 });
+          const sLine = chart.addLineSeries({ color: '#f00', lineWidth: 1 });
+          eLine.setData([{ time: Math.floor(Date.now() / 1000), value: trade.entry }]);
+          tLine.setData([{ time: Math.floor(Date.now() / 1000), value: trade.tp }]);
+          sLine.setData([{ time: Math.floor(Date.now() / 1000), value: trade.sl }]);
+          lineSeries.push(eLine, tLine, sLine);
+
+          const div = document.createElement("div");
+          div.className = "bg-gray-800 p-2 rounded";
+          div.innerHTML = `
+            ${trade.type.toUpperCase()} ₹${trade.entry} x${trade.qty} | TP ₹${trade.tp} | SL ₹${trade.sl} | P&L: ₹${pnl.toFixed(2)}
+            <button class="bg-yellow-500 ml-2 px-2 py-1 rounded" onclick="closeTrade('${id}')">Close</button>
+          `;
+          container.appendChild(div);
+        });
+      });
+    }
+
+    function closeTrade(id) {
+      db.ref("users/" + username + "/trades/" + id + "/open").set(false);
     }
 
     function requestWithdrawal() {
-      alert('Withdrawal request sent. Will be processed in 2 business days.');
-      document.getElementById('withdrawAmount').value = '';
-      document.getElementById('whatsapp').value = '';
+      const amt = document.getElementById("withdrawAmount").value;
+      const wa = document.getElementById("withdrawWhatsApp").value;
+      if (!amt || !wa) return alert("Fill all fields");
+      db.ref("withdrawals").push({ user: username, amount: amt, whatsapp: wa, time: Date.now(), status: "pending" });
+      alert("Withdrawal will be processed in 2 business days.");
     }
 
-    // Simulated balance
-    document.getElementById('balance').innerText = '50.00';
+    function loadTradeHistory() {
+      db.ref("users/" + username + "/trades").on("value", snap => {
+        const data = snap.val() || {};
+        const history = document.getElementById("tradeHistory");
+        history.innerHTML = "";
+        Object.entries(data).forEach(([id, trade]) => {
+          if (trade.open) return;
+          const div = document.createElement("div");
+          div.className = "bg-gray-700 p-2 rounded";
+          div.innerText = `${trade.type.toUpperCase()} ₹${trade.entry} x${trade.qty} | TP ₹${trade.tp} | SL ₹${trade.sl}`;
+          history.appendChild(div);
+        });
+      });
+    }
 
-    drawChart();
+    db.ref("users/" + username + "/balance").on("value", snap => {
+      document.getElementById("balanceDisplay").textContent = snap.val() || 0;
+    });
+
+    loadTrades();
+    loadTradeHistory();
   </script>
 </body>
 </html>
