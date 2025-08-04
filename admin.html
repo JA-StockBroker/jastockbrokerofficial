@@ -167,11 +167,14 @@
 
     chartRef.on("value", snap => {
       const data = snap.val();
-      const candles = [];
-      for (let k in data) {
-        const c = data[k];
-        candles.push({ x: candles.length, y: [c.open, c.high, c.low, c.close] });
-      }
+      const allCandles = Object.values(data || {});
+      const recentCandles = allCandles.slice(-50); // Show only last 50 candles
+
+      const formatted = recentCandles.map((c, i) => ({
+        x: i,
+        y: [c.open, c.high, c.low, c.close]
+      }));
+
       const chart = new ApexCharts(document.getElementById("chart"), {
         chart: {
           type: 'candlestick',
@@ -179,7 +182,7 @@
           zoom: { enabled: true },
           animations: { enabled: false }
         },
-        series: [{ data: candles }],
+        series: [{ data: formatted }],
         xaxis: {
           type: 'numeric',
           labels: { show: false }
@@ -188,6 +191,8 @@
           labels: { formatter: v => '₹' + v.toFixed(2) }
         }
       });
+
+      document.getElementById("chart").innerHTML = ""; // Clear previous
       chart.render();
     });
   </script>
