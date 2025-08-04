@@ -18,10 +18,11 @@
 </head>
 <body>
   <h1>Admin Panel</h1>
+
   <button onclick="openMarket()">Open Market</button>
   <button onclick="closeMarket()">Close Market</button>
   <button onclick="resetChart()">Reset Chart</button>
-  <button class="fullscreen-btn" onclick="toggleFullscreen()">🖥 Fullscreen</button>
+  <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
 
   <p>Live Price: ₹<span id="livePrice">--</span></p>
   <input type="number" id="qty" placeholder="Qty" value="1" min="1">
@@ -68,6 +69,7 @@
     const marketRef = db.ref("market/isOpen");
 
     let currentPrice = 1.0;
+    let chart;
 
     priceRef.on("value", snap => {
       currentPrice = parseFloat(snap.val() || 1);
@@ -81,8 +83,7 @@
       const close = type === "buy" ? open + move : open - move;
       const high = Math.max(open, close);
       const low = Math.min(open, close);
-      const lastTimestamp = Date.now();
-      const candle = { open, high, low, close, timestamp: lastTimestamp };
+      const candle = { open, high, low, close, timestamp: Date.now() };
       chartRef.push(candle);
       priceRef.set(close);
     }
@@ -154,7 +155,7 @@
           const div = document.createElement("div");
           div.className = "withdrawal-card";
           div.innerHTML = `
-            <strong>${u}</strong> ₹${req.amount} | ${req.contact}<br>
+            <strong>${u}</strong> ₹${req.amount} | ${req.contact || 'undefined'}<br>
             <button onclick="updateWithdrawal('${u}','${key}','approved')">✅ Approve</button>
             <button onclick="updateWithdrawal('${u}','${key}','rejected')">❌ Reject</button>
           `;
@@ -168,49 +169,47 @@
     }
 
     function toggleFullscreen() {
-      const el = document.documentElement;
+      const chartEl = document.getElementById("chart");
       if (!document.fullscreenElement) {
-        el.requestFullscreen().catch(err => alert(`Error attempting to enable full-screen mode: ${err.message}`));
+        chartEl.requestFullscreen().catch(err => console.log(err));
       } else {
         document.exitFullscreen();
       }
     }
 
-    // Chart rendering logic (no gaps)
     chartRef.on("value", snap => {
       const data = snap.val() || {};
       const allCandles = Object.values(data);
-      const formatted = allCandles.map(c => ({
-        x: new Date(c.timestamp),
+      const formatted = allCandles.map((c, i) => ({
+        x: `Candle ${i + 1}`,
         y: [c.open, c.high, c.low, c.close]
       }));
 
-      const chartOptions = {
+      const options = {
         chart: {
           type: 'candlestick',
           height: 400,
           animations: { enabled: false },
           toolbar: { show: true },
-          zoom: { enabled: true }
+          zoom: { enabled: true },
+          pan: { enabled: true }
         },
         series: [{ data: formatted }],
         xaxis: {
-          type: 'datetime',
-          labels: {
-            datetimeFormatter: {
-              hour: 'HH:mm',
-              minute: 'HH:mm'
-            }
-          }
+          type: 'category',
+          tickAmount: 10,
+          labels: { rotate: -45 }
         },
         yaxis: {
-          labels: { formatter: v => '₹' + v.toFixed(2) }
+          labels: {
+            formatter: v => '₹' + v.toFixed(2)
+          }
         }
       };
 
       const chartDiv = document.getElementById("chart");
       chartDiv.innerHTML = "";
-      const chart = new ApexCharts(chartDiv, chartOptions);
+      chart = new ApexCharts(chartDiv, options);
       chart.render();
     });
   </script>
