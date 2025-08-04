@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JA Stock Broker - Trader</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JA Stock Trader</title>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database-compat.js"></script>
@@ -77,9 +77,10 @@
       crosshair: { mode: 1 },
       rightPriceScale: { visible: true },
       timeScale: { visible: true, timeVisible: true, secondsVisible: true },
+      handleScroll: true,
+      handleScale: true
     });
     const candleSeries = chart.addCandlestickSeries();
-    let lineSeries = [];
 
     function drawChart() {
       db.ref("chart").on("value", snapshot => {
@@ -91,25 +92,28 @@
         }
       });
     }
-
     drawChart();
 
     function placeTrade(type) {
       const qty = parseInt(document.getElementById("quantity").value);
       const tp = parseFloat(document.getElementById("tp").value);
       const sl = parseFloat(document.getElementById("sl").value);
+      const entry = parseFloat(document.getElementById("livePrice").textContent);
 
       if (!qty || qty <= 0 || !tp || !sl) return alert("Enter valid quantity, TP, and SL");
-
-      const entry = parseFloat(document.getElementById("livePrice").textContent);
       if ((type === 'buy' && (tp <= entry || sl >= entry)) ||
           (type === 'sell' && (tp >= entry || sl <= entry))) {
         return alert("Invalid TP/SL levels for " + type.toUpperCase());
       }
 
       db.ref("users/" + username).once("value", snap => {
-        const balance = snap.val().balance;
-        if (balance < 5) return alert("Insufficient balance (min ₹5 required)");
+        const user = snap.val();
+        if (!user || user.balance === undefined) return alert("User not found.");
+        if (user.balance < 5) return alert("Insufficient balance (min ₹5 required)");
+
+        // Deduct ₹1 fee per trade
+        const newBal = user.balance - 1;
+        db.ref("users/" + username + "/balance").set(newBal);
 
         const trade = {
           type, qty, tp, sl, entry,
@@ -126,16 +130,8 @@
         container.innerHTML = "";
         Object.entries(data).forEach(([id, trade]) => {
           if (!trade.open) return;
-          const pnl = (trade.type === 'buy' ? 1 : -1) * (parseFloat(document.getElementById("livePrice").textContent) - trade.entry) * trade.qty;
-
-          // Draw chart lines
-          const eLine = chart.addLineSeries({ color: '#00f', lineWidth: 1 });
-          const tLine = chart.addLineSeries({ color: '#0f0', lineWidth: 1 });
-          const sLine = chart.addLineSeries({ color: '#f00', lineWidth: 1 });
-          eLine.setData([{ time: Math.floor(Date.now() / 1000), value: trade.entry }]);
-          tLine.setData([{ time: Math.floor(Date.now() / 1000), value: trade.tp }]);
-          sLine.setData([{ time: Math.floor(Date.now() / 1000), value: trade.sl }]);
-          lineSeries.push(eLine, tLine, sLine);
+          const price = parseFloat(document.getElementById("livePrice").textContent);
+          const pnl = (trade.type === 'buy' ? 1 : -1) * (price - trade.entry) * trade.qty;
 
           const div = document.createElement("div");
           div.className = "bg-gray-800 p-2 rounded";
