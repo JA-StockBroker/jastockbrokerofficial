@@ -1,195 +1,189 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>JA Stock Broker Admin</title>
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <title>JA Stock Broker - Admin Panel</title>
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { background: #0f172a; color: white; font-family: Arial, sans-serif; padding: 20px; }
-    input, button { padding: 6px 10px; margin: 5px; }
-    #chart { background: white; border-radius: 10px; margin-top: 20px; height: 400px; }
-    .user-card { background: #1e293b; padding: 10px; margin: 10px 0; border-radius: 6px; }
-    .section { margin-top: 30px; }
-    .withdrawal-card { background: #334155; padding: 8px; margin: 5px 0; border-radius: 6px; }
+    body {
+      background: #0d1117;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 10px;
+    }
+    button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 5px;
+      margin: 2px;
+    }
+    .btn-green { background: green; color: white; }
+    .btn-red { background: red; color: white; }
+    .btn-blue { background: #007bff; color: white; }
+    #chart {
+      height: 300px;
+    }
+    .user-card, .withdrawal-card {
+      background: #1c1c1c;
+      margin: 6px 0;
+      padding: 8px;
+      border-radius: 5px;
+    }
+    input {
+      margin: 4px;
+      padding: 6px;
+      border-radius: 5px;
+      border: none;
+    }
+    h2 { margin-top: 30px; }
   </style>
 </head>
 <body>
-  <h1>Admin Panel</h1>
-
-  <button onclick="openMarket()">Open Market</button>
-  <button onclick="closeMarket()">Close Market</button>
-  <button onclick="resetChart()">Reset Chart</button>
-
-  <p>Live Price: ₹<span id="livePrice">--</span></p>
-  <input type="number" id="qty" placeholder="Qty" value="1" min="1">
-  <button onclick="simulateCandle('buy')">⬆ Buy</button>
-  <button onclick="simulateCandle('sell')">⬇ Sell</button>
-
+  <div id="clock"></div>
+  <h2>Admin Panel</h2>
+  <div>
+    <button id="openMarket" class="btn-green">Open Market</button>
+    <button id="closeMarket" class="btn-red">Close Market</button>
+    <button id="resetChart" class="btn-red">Reset Chart</button>
+  </div>
+  <p>Live Price: <span id="livePrice">Loading...</span></p>
+  <input id="adminQty" type="number" value="1" style="width: 60px"> 
+  <button class="btn-blue" onclick="adminBuy()">Buy</button>
+  <button class="btn-blue" onclick="adminSell()">Sell</button>
   <div id="chart"></div>
 
-  <div class="section">
-    <h2>Users</h2>
-    <input id="newUser" placeholder="Username">
-    <input id="newPass" placeholder="Password">
-    <input id="newBal" type="number" placeholder="Balance">
-    <button onclick="addUser()">Add User</button>
-    <div id="userList"></div>
-  </div>
+  <h2>Users</h2>
+  <input id="newUsername" placeholder="Username">
+  <input id="newPassword" placeholder="Password">
+  <input id="newBalance" type="number" placeholder="Balance">
+  <button class="btn-blue" onclick="addUser()">Add User</button>
+  <button class="btn-blue" onclick="updateUser()">Update User</button>
+  <div id="userList"></div>
 
-  <div class="section">
-    <h2>Withdrawals</h2>
-    <h3>Pending</h3>
-    <div id="pendingWithdrawals"></div>
-    <h3>Approved</h3>
-    <div id="approvedWithdrawals"></div>
-    <h3>Rejected</h3>
-    <div id="rejectedWithdrawals"></div>
-  </div>
+  <h2>Withdrawals</h2>
+  <h3>Pending</h3>
+  <div id="pendingWithdrawals"></div>
+  <h3>Approved</h3>
+  <div id="approvedWithdrawals"></div>
+  <h3>Rejected</h3>
+  <div id="rejectedWithdrawals"></div>
 
   <script>
-    const config = {
-      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
-      authDomain: "brokerja-74512.firebaseapp.com",
-      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "brokerja-74512",
-      storageBucket: "brokerja-74512.appspot.com",
-      messagingSenderId: "1048821297447",
-      appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
+    const firebaseConfig = {
+      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
-    firebase.initializeApp(config);
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const chartRef = db.ref("market/chart");
-    const priceRef = db.ref("market/currentPrice");
-    const usersRef = db.ref("users");
-    const marketRef = db.ref("market/isOpen");
-
-    let currentPrice = 1.0;
-
-    priceRef.on("value", snap => {
-      currentPrice = parseFloat(snap.val() || 1);
-      document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
+    const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+      layout: { background: { color: '#0d1117' }, textColor: 'white' },
+      grid: { vertLines: { color: '#444' }, horzLines: { color: '#444' } },
+      rightPriceScale: { borderVisible: false },
+      timeScale: { timeVisible: false, secondsVisible: false },
     });
+    const candleSeries = chart.addCandlestickSeries();
 
-    function simulateCandle(type) {
-      const qty = parseInt(document.getElementById("qty").value);
-      const move = qty * 0.10;
-      const open = currentPrice;
-      const close = type === "buy" ? open + move : open - move;
-      const high = Math.max(open, close);
-      const low = Math.min(open, close);
-      const candle = { open, high, low, close, timestamp: Date.now() };
-      chartRef.push(candle);
-      priceRef.set(close);
+    function updateClock() {
+      document.getElementById("clock").innerText = new Date().toLocaleTimeString();
     }
+    setInterval(updateClock, 1000);
+    updateClock();
 
-    function openMarket() {
-      marketRef.set(true);
-      alert("Market Opened ✅");
-    }
-
-    function closeMarket() {
-      marketRef.set(false);
-      alert("Market Closed ❌");
-    }
-
-    function resetChart() {
-      chartRef.remove();
-      priceRef.set(1);
-      alert("Chart Reset 🔄");
-    }
-
-    function addUser() {
-      const u = document.getElementById("newUser").value;
-      const p = document.getElementById("newPass").value;
-      const b = parseFloat(document.getElementById("newBal").value);
-      if (!u || !p || isNaN(b)) return alert("Fill all fields");
-      db.ref("users/" + u).set({ password: p, balance: b });
-    }
-
-    usersRef.on("value", snap => {
-      const users = snap.val();
-      const list = document.getElementById("userList");
-      list.innerHTML = "";
-      for (let u in users) {
-        const d = users[u];
-        const div = document.createElement("div");
-        div.className = "user-card";
-        div.innerHTML = `
-          <strong>${u}</strong><br>
-          Balance: ₹${d.balance} <br>
-          <button onclick="editUser('${u}', ${d.balance})">✏️ Edit</button>
-          <button onclick="deleteUser('${u}')">🗑 Delete</button>
-        `;
-        list.appendChild(div);
+    const chartRef = db.ref("chart");
+    chartRef.on("value", (snapshot) => {
+      const data = snapshot.val() || [];
+      candleSeries.setData(data);
+      if (data.length > 0) {
+        const last = data[data.length - 1];
+        document.getElementById("livePrice").innerText = `₹${last.close.toFixed(2)}`;
       }
     });
 
-    function editUser(username, oldBal) {
-      const newBal = prompt("Enter new balance", oldBal);
-      if (newBal !== null) db.ref("users/" + username + "/balance").set(parseFloat(newBal));
+    function addCandle(type) {
+      chartRef.once("value").then(snap => {
+        const candles = snap.val() || [];
+        const last = candles[candles.length - 1] || { close: 1 };
+        const qty = parseFloat(document.getElementById("adminQty").value) || 1;
+        const newPrice = type === "buy" ? last.close + qty * 0.1 : last.close - qty * 0.1;
+        const candle = {
+          time: Math.floor(Date.now() / 1000),
+          open: last.close,
+          high: Math.max(last.close, newPrice),
+          low: Math.min(last.close, newPrice),
+          close: newPrice
+        };
+        candles.push(candle);
+        chartRef.set(candles);
+        db.ref("price").set(newPrice);
+      });
+    }
+    function adminBuy() { addCandle("buy"); }
+    function adminSell() { addCandle("sell"); }
+
+    document.getElementById("openMarket").onclick = () => db.ref("market").set("open");
+    document.getElementById("closeMarket").onclick = () => db.ref("market").set("closed");
+    document.getElementById("resetChart").onclick = () => {
+      chartRef.set([]);
+      db.ref("price").set(1);
+    };
+
+    function addUser() {
+      const uname = newUsername.value;
+      const pass = newPassword.value;
+      const bal = parseFloat(newBalance.value);
+      db.ref("users/" + uname).set({ password: pass, balance: bal });
+    }
+
+    function updateUser() {
+      const uname = newUsername.value;
+      const pass = newPassword.value;
+      const bal = parseFloat(newBalance.value);
+      db.ref("users/" + uname).update({ password: pass, balance: bal });
     }
 
     function deleteUser(username) {
-      if (confirm("Delete user " + username + "?")) db.ref("users/" + username).remove();
+      db.ref("users/" + username).remove();
     }
 
-    const withdrawBox = {
-      pending: document.getElementById("pendingWithdrawals"),
-      approved: document.getElementById("approvedWithdrawals"),
-      rejected: document.getElementById("rejectedWithdrawals")
-    };
-
-    usersRef.on("value", snap => {
-      const users = snap.val();
-      for (let u in users) {
-        const wds = users[u].withdrawalRequests || {};
-        for (let key in wds) {
-          const req = wds[key];
-          const box = withdrawBox[req.status];
-          const div = document.createElement("div");
-          div.className = "withdrawal-card";
-          div.innerHTML = `
-            <strong>${u}</strong> ₹${req.amount} | ${req.contact}<br>
-            <button onclick="updateWithdrawal('${u}','${key}','approved')">✅ Approve</button>
-            <button onclick="updateWithdrawal('${u}','${key}','rejected')">❌ Reject</button>
-          `;
-          box.appendChild(div);
-        }
-      }
+    db.ref("users").on("value", snap => {
+      const users = snap.val() || {};
+      userList.innerHTML = Object.entries(users).map(([u, data]) => `
+        <div class='user-card'>
+          <b>${u}</b> Balance: ₹${data.balance}<br>
+          <button class='btn-blue' onclick="edit('${u}', '${data.password}', ${data.balance})">Edit</button>
+          <button class='btn-red' onclick="deleteUser('${u}')">Delete</button>
+        </div>`).join('');
     });
 
-    function updateWithdrawal(user, key, status) {
-      db.ref(`users/${user}/withdrawalRequests/${key}/status`).set(status);
+    function edit(u, p, b) {
+      newUsername.value = u;
+      newPassword.value = p;
+      newBalance.value = b;
     }
 
-    chartRef.on("value", snap => {
-      const data = snap.val();
-      const candles = [];
-      for (let k in data) {
-        const c = data[k];
-        candles.push({ x: candles.length, y: [c.open, c.high, c.low, c.close] });
-      }
-      const chart = new ApexCharts(document.getElementById("chart"), {
-        chart: {
-          type: 'candlestick',
-          toolbar: { show: true },
-          zoom: { enabled: true },
-          animations: { enabled: false }
-        },
-        series: [{ data: candles }],
-        xaxis: {
-          type: 'numeric',
-          labels: { show: false }
-        },
-        yaxis: {
-          labels: { formatter: v => '₹' + v.toFixed(2) }
-        }
+    function handleWithdrawals() {
+      db.ref("withdrawals").on("value", snap => {
+        const data = snap.val() || {};
+        const pending = [], approved = [], rejected = [];
+        Object.entries(data).forEach(([id, w]) => {
+          const card = `
+            <div class='withdrawal-card'>
+              <b>${w.username}</b> ₹${w.amount} | ${w.whatsapp || 'undefined'}<br>${new Date(w.time).toLocaleString()}<br>
+              <button class='btn-green' onclick="db.ref('withdrawals/${id}/status').set('approved')">Approve</button>
+              <button class='btn-red' onclick="db.ref('withdrawals/${id}/status').set('rejected')">Reject</button>
+            </div>`;
+          if (w.status === 'approved') approved.push(card);
+          else if (w.status === 'rejected') rejected.push(card);
+          else pending.push(card);
+        });
+        pendingWithdrawals.innerHTML = pending.join('');
+        approvedWithdrawals.innerHTML = approved.join('');
+        rejectedWithdrawals.innerHTML = rejected.join('');
       });
-      chart.render();
-    });
+    }
+    handleWithdrawals();
   </script>
 </body>
 </html>
