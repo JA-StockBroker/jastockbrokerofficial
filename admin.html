@@ -13,14 +13,15 @@
     .user-card { background: #1e293b; padding: 10px; margin: 10px 0; border-radius: 6px; }
     .section { margin-top: 30px; }
     .withdrawal-card { background: #334155; padding: 8px; margin: 5px 0; border-radius: 6px; }
+    .fullscreen-btn { float: right; margin-top: -40px; }
   </style>
 </head>
 <body>
   <h1>Admin Panel</h1>
-
   <button onclick="openMarket()">Open Market</button>
   <button onclick="closeMarket()">Close Market</button>
   <button onclick="resetChart()">Reset Chart</button>
+  <button class="fullscreen-btn" onclick="toggleFullscreen()">🖥 Fullscreen</button>
 
   <p>Live Price: ₹<span id="livePrice">--</span></p>
   <input type="number" id="qty" placeholder="Qty" value="1" min="1">
@@ -80,7 +81,8 @@
       const close = type === "buy" ? open + move : open - move;
       const high = Math.max(open, close);
       const low = Math.min(open, close);
-      const candle = { open, high, low, close, timestamp: Date.now() };
+      const lastTimestamp = Date.now();
+      const candle = { open, high, low, close, timestamp: lastTimestamp };
       chartRef.push(candle);
       priceRef.set(close);
     }
@@ -165,41 +167,23 @@
       db.ref(`users/${user}/withdrawalRequests/${key}/status`).set(status);
     }
 
-    // Chart rendering with session grouping
+    function toggleFullscreen() {
+      const el = document.documentElement;
+      if (!document.fullscreenElement) {
+        el.requestFullscreen().catch(err => alert(`Error attempting to enable full-screen mode: ${err.message}`));
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    // Chart rendering logic (no gaps)
     chartRef.on("value", snap => {
       const data = snap.val() || {};
       const allCandles = Object.values(data);
-      const formatted = [];
-      const annotations = [];
-      let lastDate = "";
-
-      allCandles.forEach(c => {
-        const ts = new Date(c.timestamp);
-        const dateStr = ts.toDateString();
-
-        if (dateStr !== lastDate) {
-          annotations.push({
-            x: ts.getTime(),
-            borderColor: "#00ff00",
-            label: {
-              text: dateStr,
-              style: {
-                background: "#0f0",
-                color: "#000",
-                fontWeight: "bold"
-              },
-              orientation: "horizontal",
-              offsetY: -10
-            }
-          });
-          lastDate = dateStr;
-        }
-
-        formatted.push({
-          x: ts,
-          y: [c.open, c.high, c.low, c.close]
-        });
-      });
+      const formatted = allCandles.map(c => ({
+        x: new Date(c.timestamp),
+        y: [c.open, c.high, c.low, c.close]
+      }));
 
       const chartOptions = {
         chart: {
@@ -207,27 +191,20 @@
           height: 400,
           animations: { enabled: false },
           toolbar: { show: true },
-          zoom: { enabled: true },
-          scrollablePlotArea: {
-            enabled: true,
-            minWidth: 2000
-          }
+          zoom: { enabled: true }
         },
         series: [{ data: formatted }],
         xaxis: {
           type: 'datetime',
           labels: {
-            datetimeUTC: false,
-            format: 'dd MMM HH:mm'
+            datetimeFormatter: {
+              hour: 'HH:mm',
+              minute: 'HH:mm'
+            }
           }
         },
         yaxis: {
-          labels: {
-            formatter: v => '₹' + v.toFixed(2)
-          }
-        },
-        annotations: {
-          xaxis: annotations
+          labels: { formatter: v => '₹' + v.toFixed(2) }
         }
       };
 
