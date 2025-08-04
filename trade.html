@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JA Stock Trader</title>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
@@ -77,8 +77,6 @@
       crosshair: { mode: 1 },
       rightPriceScale: { visible: true },
       timeScale: { visible: true, timeVisible: true, secondsVisible: true },
-      handleScroll: true,
-      handleScale: true
     });
     const candleSeries = chart.addCandlestickSeries();
 
@@ -92,6 +90,7 @@
         }
       });
     }
+
     drawChart();
 
     function placeTrade(type) {
@@ -99,27 +98,20 @@
       const tp = parseFloat(document.getElementById("tp").value);
       const sl = parseFloat(document.getElementById("sl").value);
       const entry = parseFloat(document.getElementById("livePrice").textContent);
-
-      if (!qty || qty <= 0 || !tp || !sl) return alert("Enter valid quantity, TP, and SL");
-      if ((type === 'buy' && (tp <= entry || sl >= entry)) ||
-          (type === 'sell' && (tp >= entry || sl <= entry))) {
-        return alert("Invalid TP/SL levels for " + type.toUpperCase());
-      }
+      if (!qty || !tp || !sl || !entry) return alert("Enter valid fields");
 
       db.ref("users/" + username).once("value", snap => {
-        const user = snap.val();
-        if (!user || user.balance === undefined) return alert("User not found.");
-        if (user.balance < 5) return alert("Insufficient balance (min ₹5 required)");
+        const data = snap.val();
+        const balance = data.balance || 0;
+        if (balance < 1) return alert("Min ₹1 required");
 
-        // Deduct ₹1 fee per trade
-        const newBal = user.balance - 1;
-        db.ref("users/" + username + "/balance").set(newBal);
-
-        const trade = {
-          type, qty, tp, sl, entry,
-          open: true, time: Date.now()
-        };
+        const trade = { type, qty, tp, sl, entry, open: true, time: Date.now() };
         db.ref("users/" + username + "/trades").push(trade);
+        db.ref("users/" + username + "/balance").set(balance - 1);
+        db.ref("users/admin/balance").once("value", adm => {
+          const ab = adm.val() || 0;
+          db.ref("users/admin/balance").set(ab + 1);
+        });
       });
     }
 
@@ -130,16 +122,22 @@
         container.innerHTML = "";
         Object.entries(data).forEach(([id, trade]) => {
           if (!trade.open) return;
-          const price = parseFloat(document.getElementById("livePrice").textContent);
-          const pnl = (trade.type === 'buy' ? 1 : -1) * (price - trade.entry) * trade.qty;
+          const live = parseFloat(document.getElementById("livePrice").textContent);
+          const pnl = (trade.type === 'buy' ? 1 : -1) * (live - trade.entry) * trade.qty;
 
           const div = document.createElement("div");
           div.className = "bg-gray-800 p-2 rounded";
           div.innerHTML = `
             ${trade.type.toUpperCase()} ₹${trade.entry} x${trade.qty} | TP ₹${trade.tp} | SL ₹${trade.sl} | P&L: ₹${pnl.toFixed(2)}
-            <button class="bg-yellow-500 ml-2 px-2 py-1 rounded" onclick="closeTrade('${id}')">Close</button>
+            <button onclick="closeTrade('${id}')" class="bg-yellow-500 ml-2 px-2 py-1 rounded">Close</button>
           `;
           container.appendChild(div);
+
+          if ((trade.type === 'buy' && (live >= trade.tp || live <= trade.sl)) ||
+              (trade.type === 'sell' && (live <= trade.tp || live >= trade.sl))) {
+            db.ref("users/" + username + "/trades/" + id + "/open").set(false);
+            alert("Trade closed: TP or SL hit.");
+          }
         });
       });
     }
