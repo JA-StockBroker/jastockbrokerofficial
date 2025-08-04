@@ -9,20 +9,19 @@
   <style>
     body { background: #0f172a; color: white; font-family: Arial, sans-serif; padding: 20px; }
     input, button { padding: 6px 10px; margin: 5px; }
-    #chart { background: white; border-radius: 10px; margin-top: 20px; height: 400px; }
+    #chart { background: white; border-radius: 10px; margin-top: 20px; height: 500px; }
     .user-card { background: #1e293b; padding: 10px; margin: 10px 0; border-radius: 6px; }
     .section { margin-top: 30px; }
     .withdrawal-card { background: #334155; padding: 8px; margin: 5px 0; border-radius: 6px; }
-    .fullscreen-btn { float: right; margin-top: -40px; }
+    #fullscreenBtn { float: right; margin-top: -40px; }
   </style>
 </head>
 <body>
   <h1>Admin Panel</h1>
-
   <button onclick="openMarket()">Open Market</button>
   <button onclick="closeMarket()">Close Market</button>
   <button onclick="resetChart()">Reset Chart</button>
-  <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+  <button id="fullscreenBtn" onclick="toggleFullScreen()">🔳 Fullscreen</button>
 
   <p>Live Price: ₹<span id="livePrice">--</span></p>
   <input type="number" id="qty" placeholder="Qty" value="1" min="1">
@@ -31,24 +30,7 @@
 
   <div id="chart"></div>
 
-  <div class="section">
-    <h2>Users</h2>
-    <input id="newUser" placeholder="Username">
-    <input id="newPass" placeholder="Password">
-    <input id="newBal" type="number" placeholder="Balance">
-    <button onclick="addUser()">Add User</button>
-    <div id="userList"></div>
-  </div>
-
-  <div class="section">
-    <h2>Withdrawals</h2>
-    <h3>Pending</h3>
-    <div id="pendingWithdrawals"></div>
-    <h3>Approved</h3>
-    <div id="approvedWithdrawals"></div>
-    <h3>Rejected</h3>
-    <div id="rejectedWithdrawals"></div>
-  </div>
+  <!-- User and Withdrawals sections will go below this -->
 
   <script>
     const config = {
@@ -65,7 +47,6 @@
 
     const chartRef = db.ref("market/chart");
     const priceRef = db.ref("market/currentPrice");
-    const usersRef = db.ref("users");
     const marketRef = db.ref("market/isOpen");
 
     let currentPrice = 1.0;
@@ -104,74 +85,10 @@
       alert("Chart Reset 🔄");
     }
 
-    function addUser() {
-      const u = document.getElementById("newUser").value;
-      const p = document.getElementById("newPass").value;
-      const b = parseFloat(document.getElementById("newBal").value);
-      if (!u || !p || isNaN(b)) return alert("Fill all fields");
-      db.ref("users/" + u).set({ password: p, balance: b });
-    }
-
-    usersRef.on("value", snap => {
-      const users = snap.val();
-      const list = document.getElementById("userList");
-      list.innerHTML = "";
-      for (let u in users) {
-        const d = users[u];
-        const div = document.createElement("div");
-        div.className = "user-card";
-        div.innerHTML = `
-          <strong>${u}</strong><br>
-          Balance: ₹${d.balance} <br>
-          <button onclick="editUser('${u}', ${d.balance})">✏️ Edit</button>
-          <button onclick="deleteUser('${u}')">🗑 Delete</button>
-        `;
-        list.appendChild(div);
-      }
-    });
-
-    function editUser(username, oldBal) {
-      const newBal = prompt("Enter new balance", oldBal);
-      if (newBal !== null) db.ref("users/" + username + "/balance").set(parseFloat(newBal));
-    }
-
-    function deleteUser(username) {
-      if (confirm("Delete user " + username + "?")) db.ref("users/" + username).remove();
-    }
-
-    const withdrawBox = {
-      pending: document.getElementById("pendingWithdrawals"),
-      approved: document.getElementById("approvedWithdrawals"),
-      rejected: document.getElementById("rejectedWithdrawals")
-    };
-
-    usersRef.on("value", snap => {
-      const users = snap.val();
-      for (let u in users) {
-        const wds = users[u].withdrawalRequests || {};
-        for (let key in wds) {
-          const req = wds[key];
-          const box = withdrawBox[req.status];
-          const div = document.createElement("div");
-          div.className = "withdrawal-card";
-          div.innerHTML = `
-            <strong>${u}</strong> ₹${req.amount} | ${req.contact || 'undefined'}<br>
-            <button onclick="updateWithdrawal('${u}','${key}','approved')">✅ Approve</button>
-            <button onclick="updateWithdrawal('${u}','${key}','rejected')">❌ Reject</button>
-          `;
-          box.appendChild(div);
-        }
-      }
-    });
-
-    function updateWithdrawal(user, key, status) {
-      db.ref(`users/${user}/withdrawalRequests/${key}/status`).set(status);
-    }
-
-    function toggleFullscreen() {
-      const chartEl = document.getElementById("chart");
+    function toggleFullScreen() {
+      const chartDiv = document.getElementById("chart");
       if (!document.fullscreenElement) {
-        chartEl.requestFullscreen().catch(err => console.log(err));
+        chartDiv.requestFullscreen().catch(err => alert("Error: " + err));
       } else {
         document.exitFullscreen();
       }
@@ -180,30 +97,28 @@
     chartRef.on("value", snap => {
       const data = snap.val() || {};
       const allCandles = Object.values(data);
-      const formatted = allCandles.map((c, i) => ({
-        x: `Candle ${i + 1}`,
+
+      const formatted = allCandles.map(c => ({
+        x: new Date(c.timestamp),
         y: [c.open, c.high, c.low, c.close]
       }));
 
       const options = {
         chart: {
           type: 'candlestick',
-          height: 400,
+          height: 500,
           animations: { enabled: false },
-          toolbar: { show: true },
+          toolbar: { show: true, tools: { zoom: true, pan: true } },
           zoom: { enabled: true },
-          pan: { enabled: true }
+          pan: { enabled: true, type: "xy", autoScaleYaxis: true },
         },
         series: [{ data: formatted }],
         xaxis: {
-          type: 'category',
-          tickAmount: 10,
-          labels: { rotate: -45 }
+          type: 'datetime',
+          labels: { show: true },
         },
         yaxis: {
-          labels: {
-            formatter: v => '₹' + v.toFixed(2)
-          }
+          labels: { formatter: val => '₹' + val.toFixed(2) }
         }
       };
 
