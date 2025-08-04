@@ -1,207 +1,152 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JA Trader Panel</title>
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <title>JA Stock Broker - Trade</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
-    input, button { padding: 6px 10px; margin: 5px; }
-    #chart { background: white; border-radius: 10px; margin-top: 20px; }
-    .section { margin-top: 30px; }
-    .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
-    .logout-btn { float: right; margin-top: -35px; }
+    body {
+      background: #0a0f1c;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h2, h3 {
+      margin-top: 20px;
+    }
+    input, button {
+      padding: 8px;
+      margin: 5px 0;
+      border-radius: 5px;
+      border: none;
+    }
+    button {
+      background: #007bff;
+      color: white;
+    }
+    canvas {
+      background: #fff;
+      margin: 20px 0;
+    }
+    .trade-item {
+      background: #1e1e2f;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+    }
   </style>
 </head>
 <body>
-  <h1>Welcome, <span id="usernameDisplay"></span></h1>
-  <button class="logout-btn" onclick="logout()">Logout</button>
+  <h2>JA Stock Broker - Trade Panel</h2>
+  <p>Balance: ₹<span id="balance">0.00</span></p>
 
-  <p>Market Status: <span id="marketStatus">Checking...</span> | Live Price: ₹<span id="livePrice">--</span></p>
-  <p>Balance: ₹<span id="balanceDisplay">--</span></p>
+  <label>Quantity:</label>
+  <input type="number" id="quantity" value="1"><br>
 
-  <div>
-    <label>Qty:</label><input type="number" id="qty" value="1" min="1">
-    <label>TP:</label><input type="number" id="tp">
-    <label>SL:</label><input type="number" id="sl">
-    <button onclick="placeTrade('buy')">Buy</button>
-    <button onclick="placeTrade('sell')">Sell</button>
-  </div>
+  <label>TP:</label>
+  <input type="number" id="tp"><br>
 
-  <div class="section">
-    <h2>Withdraw Funds</h2>
-    <input id="withdrawAmt" type="number" placeholder="Amount">
-    <input id="withdrawPhone" placeholder="WhatsApp Number">
-    <button onclick="requestWithdrawal()">Request Withdrawal</button>
-    <p style="color:orange">⚠️ 2% withdrawal fee applies. Process in 2 business days.</p>
-  </div>
+  <label>SL:</label>
+  <input type="number" id="sl"><br>
 
-  <div id="chart" style="height: 400px;"></div>
+  <button onclick="placeTrade('buy')">Buy</button>
+  <button onclick="placeTrade('sell')">Sell</button>
 
-  <div class="section">
-    <h2>Open Trades</h2>
-    <div id="openTrades"></div>
-  </div>
+  <p>Live PnL: ₹<span id="livePnl">0.00</span></p>
 
-  <div class="section">
-    <h2>Withdrawals</h2>
-    <div id="withdrawals"></div>
-  </div>
+  <canvas id="chartCanvas" width="360" height="240"></canvas>
 
-  <div class="section">
-    <h2>Trade History</h2>
-    <div id="tradeHistory"></div>
-  </div>
+  <h3>Request Withdrawal</h3>
+  <input type="number" id="withdrawAmount" placeholder="Amount">
+  <input type="text" id="whatsapp" placeholder="WhatsApp Number">
+  <button onclick="requestWithdrawal()">Request Withdrawal</button>
+  <p style="color: orange">⚠️ 2% withdrawal fee applies on full capital.</p>
 
-  <div class="section">
-    <h2>Performance Summary</h2>
-    <p>Total Trades: <span id="totalTrades">0</span> | Wins: <span id="wins">0</span> | Losses: <span id="losses">0</span></p>
-  </div>
+  <h3>Open Trades</h3>
+  <div id="openTrades"></div>
+
+  <h3>Trade History</h3>
+  <div id="tradeHistory"></div>
 
   <script>
-    const config = {
-      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
-      authDomain: "brokerja-74512.firebaseapp.com",
-      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "brokerja-74512",
-      storageBucket: "brokerja-74512.appspot.com",
-      messagingSenderId: "1048821297447",
-      appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
-    };
-    firebase.initializeApp(config);
-    const db = firebase.database();
+    const chartCanvas = document.getElementById('chartCanvas');
+    const ctx = chartCanvas.getContext('2d');
 
-    const user = sessionStorage.getItem("username");
-    if (!user) location.href = "login.html";
-    document.getElementById("usernameDisplay").innerText = user;
+    let user = 'demoUser'; // replace with dynamic login user
+    let trades = [];
 
-    const userRef = db.ref("users/" + user);
-    const priceRef = db.ref("market/currentPrice");
-    const marketRef = db.ref("market/isOpen");
-    const tradesRef = db.ref("users/" + user + "/trades");
-    let balance = 0;
-    let currentPrice = 1;
+    function drawChart() {
+      ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
 
-    priceRef.on("value", snap => {
-      currentPrice = parseFloat(snap.val() || 1);
-      document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
-      updateOpenTrades();
-    });
+      trades.forEach((trade, i) => {
+        const x = 20 + i * 30;
+        const y = chartCanvas.height - trade.price * 10;
+        ctx.fillStyle = trade.type === 'buy' ? 'green' : 'red';
+        ctx.fillRect(x, y, 10, 10);
 
-    marketRef.on("value", snap => {
-      document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
-    });
+        // TP, SL, Entry lines
+        ctx.strokeStyle = 'blue';
+        ctx.beginPath();
+        ctx.moveTo(x - 5, chartCanvas.height - trade.tp * 10);
+        ctx.lineTo(x + 15, chartCanvas.height - trade.tp * 10);
+        ctx.stroke();
 
-    userRef.child("balance").on("value", snap => {
-      balance = parseFloat(snap.val() || 0);
-      document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
-    });
-
-    function placeTrade(type) {
-      marketRef.once("value", snap => {
-        if (!snap.val()) return alert("Market is closed");
-        if (balance < 5) return alert("Insufficient balance to trade.");
-
-        const qty = parseInt(document.getElementById("qty").value);
-        const tp = parseFloat(document.getElementById("tp").value);
-        const sl = parseFloat(document.getElementById("sl").value);
-        const entry = currentPrice;
-
-        if (type === 'buy' && (tp <= entry || sl >= entry)) return alert("Invalid TP/SL for Buy");
-        if (type === 'sell' && (tp >= entry || sl <= entry)) return alert("Invalid TP/SL for Sell");
-
-        const trade = { type, qty, entry, tp, sl, status: "open", time: Date.now() };
-        tradesRef.push(trade);
-        alert("Trade placed ✅");
+        ctx.strokeStyle = 'orange';
+        ctx.beginPath();
+        ctx.moveTo(x - 5, chartCanvas.height - trade.sl * 10);
+        ctx.lineTo(x + 15, chartCanvas.height - trade.sl * 10);
+        ctx.stroke();
       });
     }
 
-    function logout() {
-      sessionStorage.clear();
-      location.href = "login.html";
-    }
+    function placeTrade(type) {
+      const qty = parseInt(document.getElementById('quantity').value);
+      const tp = parseFloat(document.getElementById('tp').value);
+      const sl = parseFloat(document.getElementById('sl').value);
+      const price = parseFloat(document.getElementById('balance').innerText); // simulate current price
 
-    function requestWithdrawal() {
-      const amount = parseFloat(document.getElementById("withdrawAmt").value);
-      const phone = document.getElementById("withdrawPhone").value;
-      if (!amount || !phone) return alert("Fill all fields");
-      db.ref("users/" + user + "/withdrawalRequests").push({ amount, phone, status: "pending", time: Date.now() });
-      alert("Withdrawal will be processed in 2 business days ✅");
+      if ((type === 'buy' && (tp <= price || sl >= price)) ||
+          (type === 'sell' && (tp >= price || sl <= price))) {
+        alert('Invalid TP/SL based on direction.');
+        return;
+      }
+
+      const trade = { type, qty, tp, sl, price };
+      trades.push(trade);
+      updateOpenTrades();
+      drawChart();
     }
 
     function updateOpenTrades() {
-      tradesRef.once("value", snap => {
-        const data = snap.val() || {};
-        const openBox = document.getElementById("openTrades");
-        const histBox = document.getElementById("tradeHistory");
-        openBox.innerHTML = "";
-        histBox.innerHTML = "";
-        let wins = 0, losses = 0, total = 0;
-
-        for (let key in data) {
-          const t = data[key];
-          if (t.status === "closed") {
-            total++;
-            if (t.pnl > 0) wins++; else losses++;
-            histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)}</div>`;
-            continue;
-          }
-
-          let close = false;
-          if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) close = true;
-          if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) close = true;
-
-          if (close) {
-            const pnl = (t.type === 'buy' ? (currentPrice - t.entry) : (t.entry - currentPrice)) * t.qty;
-            tradesRef.child(key).update({ status: "closed", pnl });
-            userRef.child("balance").set(balance + pnl);
-            continue;
-          }
-
-          const pnl = ((t.type === 'buy' ? currentPrice - t.entry : t.entry - currentPrice) * t.qty).toFixed(2);
-          openBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>Live P&L: ₹${pnl}<br><button onclick="manualClose('${key}', ${pnl})">❌ Close</button></div>`;
-        }
-        document.getElementById("totalTrades").innerText = total;
-        document.getElementById("wins").innerText = wins;
-        document.getElementById("losses").innerText = losses;
+      const container = document.getElementById('openTrades');
+      container.innerHTML = '';
+      trades.forEach((trade, i) => {
+        const div = document.createElement('div');
+        div.className = 'trade-item';
+        div.innerHTML = `${trade.type.toUpperCase()} @ ₹${trade.price} | TP ₹${trade.tp} | SL ₹${trade.sl} 
+        <button onclick="closeTrade(${i})">Close</button>`;
+        container.appendChild(div);
       });
     }
 
-    function manualClose(key, pnl) {
-      tradesRef.child(key).update({ status: "closed", pnl });
-      userRef.child("balance").set(balance + parseFloat(pnl));
-      alert("Trade closed manually ✅");
+    function closeTrade(index) {
+      const trade = trades[index];
+      // You can add PnL calculation here
+      trades.splice(index, 1);
+      updateOpenTrades();
+      drawChart();
     }
 
-    db.ref("market/chart").on("value", snap => {
-      const candles = [];
-      snap.forEach(child => {
-        const c = child.val();
-        candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
-      });
-      const chartOptions = {
-        chart: {
-          type: 'candlestick',
-          height: 400,
-          animations: { enabled: false },
-          toolbar: { autoSelected: 'pan', show: true },
-          zoom: { enabled: true }
-        },
-        series: [{ data: candles }],
-        xaxis: {
-          type: 'category',
-          labels: { show: false }
-        },
-        yaxis: { labels: { formatter: val => '₹' + val.toFixed(2) } }
-      };
+    function requestWithdrawal() {
+      alert('Withdrawal request sent. Will be processed in 2 business days.');
+      document.getElementById('withdrawAmount').value = '';
+      document.getElementById('whatsapp').value = '';
+    }
 
-      const chartDiv = document.querySelector("#chart");
-      chartDiv.innerHTML = "";
-      new ApexCharts(chartDiv, chartOptions).render();
-    });
+    // Simulated balance
+    document.getElementById('balance').innerText = '50.00';
+
+    drawChart();
   </script>
 </body>
 </html>
