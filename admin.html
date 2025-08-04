@@ -1,58 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JA Admin Panel</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - JA Stock Broker</title>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-database-compat.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-white p-4">
-  <h1 class="text-2xl font-bold mb-4">JA Admin Panel</h1>
+<body class="bg-gray-900 text-white">
+  <div class="p-4 max-w-6xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-2xl font-bold">Admin Panel</h1>
+      <div id="clock" class="text-lg font-mono"></div>
+    </div>
 
-  <div class="grid grid-cols-3 gap-4 mb-6">
-    <div>
-      <label>Open</label><input id="open" type="number" class="text-black w-full">
-      <label>High</label><input id="high" type="number" class="text-black w-full">
-      <label>Low</label><input id="low" type="number" class="text-black w-full">
-      <label>Close</label><input id="close" type="number" class="text-black w-full">
-      <button onclick="addCandle()" class="bg-green-600 w-full mt-2 p-2 rounded">Add Candle</button>
+    <div class="flex space-x-2 mb-4">
+      <button id="openMarket" class="bg-green-600 px-3 py-1 rounded">Open Market</button>
+      <button id="closeMarket" class="bg-red-600 px-3 py-1 rounded">Close Market</button>
+      <button id="resetChart" class="bg-red-500 px-3 py-1 rounded">Reset Chart</button>
     </div>
-    <div>
-      <button onclick="toggleMarket()" class="bg-blue-600 w-full p-2 rounded mb-2">Toggle Market Open/Close</button>
-      <button onclick="resetChart()" class="bg-red-600 w-full p-2 rounded">Reset Chart</button>
-      <p class="mt-4">Market: <span id="marketStatus">Checking...</span></p>
-    </div>
-    <div>
-      <h2 class="font-semibold">Update User</h2>
-      <input id="editUser" placeholder="Username" class="text-black w-full">
-      <input id="editBalance" type="number" placeholder="New Balance" class="text-black w-full">
-      <button onclick="updateBalance()" class="bg-yellow-600 w-full p-2 rounded mt-2">Update Balance</button>
-      <button onclick="deleteUser()" class="bg-red-700 w-full p-2 rounded mt-2">Delete User</button>
-    </div>
-  </div>
 
-  <div id="chart" class="h-64 mb-8"></div>
+    <div class="mb-4">
+      <p>Live Price: <span id="livePrice">Loading...</span></p>
+      <input id="newPrice" type="number" placeholder="1" class="p-1 text-black rounded">
+      <button onclick="addCandle('buy')" class="bg-blue-500 px-3 py-1 rounded">Buy</button>
+      <button onclick="addCandle('sell')" class="bg-blue-500 px-3 py-1 rounded">Sell</button>
+    </div>
 
-  <div class="grid grid-cols-3 gap-6">
-    <div>
-      <h2 class="text-xl mb-2">Pending Withdrawals</h2>
-      <div id="pendingWithdrawals" class="space-y-2"></div>
+    <div id="chart" class="mb-6" style="height: 300px;"></div>
+
+    <h2 class="text-xl font-semibold mb-2">Users</h2>
+    <div class="flex space-x-2 mb-2">
+      <input id="userInput" placeholder="Username" class="p-1 text-black rounded">
+      <input id="passInput" placeholder="Password" class="p-1 text-black rounded">
+      <input id="balInput" placeholder="Balance" type="number" class="p-1 text-black rounded">
+      <button onclick="addUser()" class="bg-blue-600 px-3 py-1 rounded">Add User</button>
+      <button onclick="updateUser()" class="bg-blue-400 px-3 py-1 rounded">Update User</button>
     </div>
-    <div>
-      <h2 class="text-xl mb-2">Approved</h2>
-      <div id="approvedWithdrawals" class="space-y-2"></div>
-    </div>
-    <div>
-      <h2 class="text-xl mb-2">Rejected</h2>
-      <div id="rejectedWithdrawals" class="space-y-2"></div>
+    <div id="userList" class="space-y-2 mb-6"></div>
+
+    <h2 class="text-xl font-semibold mb-2">Withdrawals</h2>
+    <div class="grid grid-cols-3 gap-4">
+      <div>
+        <h3 class="text-lg font-bold">Pending</h3>
+        <div id="withdrawPending" class="space-y-2"></div>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold">Approved</h3>
+        <div id="withdrawApproved" class="space-y-2"></div>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold">Rejected</h3>
+        <div id="withdrawRejected" class="space-y-2"></div>
+      </div>
     </div>
   </div>
 
   <script>
-    const config = {
+    const firebaseConfig = {
       apiKey: "AIzaSyDV-E3ZJ0LPebK3yd19glE4aJOLqWOUdOg",
       authDomain: "brokerja-74512.firebaseapp.com",
       databaseURL: "https://brokerja-74512-default-rtdb.firebaseio.com",
@@ -61,98 +68,122 @@
       messagingSenderId: "293216906360",
       appId: "1:293216906360:web:3d5b489bf218979dd4a4c2"
     };
-    firebase.initializeApp(config);
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const marketRef = db.ref("market/isOpen");
-    const chartRef = db.ref("chart");
+    // Clock
+    setInterval(() => {
+      const now = new Date();
+      document.getElementById("clock").textContent = now.toLocaleTimeString();
+    }, 1000);
 
-    let chart = LightweightCharts.createChart(document.getElementById("chart"), {
+    // Chart
+    const chart = LightweightCharts.createChart(document.getElementById("chart"), {
       layout: { background: { color: '#111827' }, textColor: '#D1D5DB' },
       rightPriceScale: { visible: true },
       timeScale: { visible: true, timeVisible: true },
+      crosshair: { mode: 1 },
     });
     const candleSeries = chart.addCandlestickSeries();
 
-    chartRef.on("value", snap => {
-      const candles = snap.val() || [];
-      candleSeries.setData(candles);
+    db.ref("chart").on("value", snap => {
+      const data = snap.val() || [];
+      candleSeries.setData(data);
+      if (data.length > 0) {
+        const last = data[data.length - 1];
+        document.getElementById("livePrice").textContent = `₹${last.close.toFixed(2)}`;
+      }
     });
 
-    function addCandle() {
-      const open = parseFloat(document.getElementById("open").value);
-      const high = parseFloat(document.getElementById("high").value);
-      const low = parseFloat(document.getElementById("low").value);
-      const close = parseFloat(document.getElementById("close").value);
-      const timestamp = Math.floor(Date.now() / 1000);
-      chartRef.once("value", snap => {
-        const data = snap.val() || [];
-        data.push({ time: timestamp, open, high, low, close });
-        chartRef.set(data);
+    function addCandle(type) {
+      const price = parseFloat(document.getElementById("newPrice").value);
+      if (!price) return;
+      db.ref("chart").once("value", snap => {
+        const chartData = snap.val() || [];
+        const last = chartData[chartData.length - 1] || { close: 1 };
+        const time = Math.floor(Date.now() / 1000);
+        const candle = {
+          time,
+          open: last.close,
+          close: price,
+          high: Math.max(price, last.close),
+          low: Math.min(price, last.close),
+        };
+        chartData.push(candle);
+        db.ref("chart").set(chartData);
       });
     }
 
     function resetChart() {
-      chartRef.set([]);
+      db.ref("chart").set([]);
+    }
+    document.getElementById("resetChart").onclick = resetChart;
+
+    document.getElementById("openMarket").onclick = () => db.ref("marketStatus").set("open");
+    document.getElementById("closeMarket").onclick = () => db.ref("marketStatus").set("closed");
+
+    function addUser() {
+      const u = userInput.value.trim();
+      const p = passInput.value.trim();
+      const b = parseFloat(balInput.value);
+      if (!u || !p || isNaN(b)) return alert("Fill all fields");
+      db.ref("users/" + u).set({ password: p, balance: b });
     }
 
-    function toggleMarket() {
-      marketRef.once("value", snap => {
-        marketRef.set(!snap.val());
+    function updateUser() {
+      const u = userInput.value.trim();
+      const p = passInput.value.trim();
+      const b = parseFloat(balInput.value);
+      if (!u) return;
+      if (p) db.ref("users/" + u + "/password").set(p);
+      if (!isNaN(b)) db.ref("users/" + u + "/balance").set(b);
+    }
+
+    function loadUsers() {
+      db.ref("users").on("value", snap => {
+        const users = snap.val() || {};
+        userList.innerHTML = "";
+        Object.entries(users).forEach(([u, val]) => {
+          const div = document.createElement("div");
+          div.className = "bg-gray-800 p-2 rounded";
+          div.innerHTML = `${u} <span class='text-green-400'>₹${val.balance}</span>
+            <button onclick="fill('${u}', '${val.password}', ${val.balance})" class="bg-yellow-500 ml-2 px-2 rounded">Edit</button>
+            <button onclick="db.ref('users/${u}').remove()" class="bg-red-500 px-2 rounded ml-1">Delete</button>`;
+          userList.appendChild(div);
+        });
       });
     }
-
-    marketRef.on("value", snap => {
-      document.getElementById("marketStatus").textContent = snap.val() ? "✅ Open" : "❌ Closed";
-    });
-
-    function updateBalance() {
-      const user = document.getElementById("editUser").value;
-      const balance = parseFloat(document.getElementById("editBalance").value);
-      if (!user || isNaN(balance)) return alert("Enter valid user and balance");
-      db.ref("users/" + user + "/balance").set(balance);
+    function fill(u, p, b) {
+      userInput.value = u;
+      passInput.value = p;
+      balInput.value = b;
     }
+    loadUsers();
 
-    function deleteUser() {
-      const user = document.getElementById("editUser").value;
-      if (!user) return;
-      if (confirm("Delete user " + user + "?")) {
-        db.ref("users/" + user).remove();
-      }
-    }
-
-    db.ref("withdrawals").on("value", snap => {
-      const data = snap.val() || {};
-      const pending = document.getElementById("pendingWithdrawals");
-      const approved = document.getElementById("approvedWithdrawals");
-      const rejected = document.getElementById("rejectedWithdrawals");
-      pending.innerHTML = approved.innerHTML = rejected.innerHTML = "";
-
-      Object.entries(data).forEach(([id, w]) => {
-        const div = document.createElement("div");
-        div.className = "bg-gray-800 p-2 rounded";
-        div.innerHTML = `${w.user} ₹${w.amount}<br>📲 ${w.whatsapp}`;
-        if (w.status === "pending") {
-          const approveBtn = document.createElement("button");
-          approveBtn.textContent = "✅ Approve";
-          approveBtn.className = "bg-green-600 px-2 py-1 rounded mr-2";
-          approveBtn.onclick = () => db.ref("withdrawals/" + id + "/status").set("approved");
-
-          const rejectBtn = document.createElement("button");
-          rejectBtn.textContent = "❌ Reject";
-          rejectBtn.className = "bg-red-600 px-2 py-1 rounded";
-          rejectBtn.onclick = () => db.ref("withdrawals/" + id + "/status").set("rejected");
-
-          div.appendChild(approveBtn);
-          div.appendChild(rejectBtn);
-          pending.appendChild(div);
-        } else if (w.status === "approved") {
-          approved.appendChild(div);
-        } else if (w.status === "rejected") {
-          rejected.appendChild(div);
-        }
+    function loadWithdrawals() {
+      db.ref("withdrawals").on("value", snap => {
+        const data = snap.val() || {};
+        withdrawPending.innerHTML = withdrawApproved.innerHTML = withdrawRejected.innerHTML = "";
+        Object.entries(data).forEach(([id, req]) => {
+          const box = document.createElement("div");
+          box.className = "bg-gray-800 p-2 rounded";
+          box.innerHTML = `${req.user} ₹${req.amount} | ${req.whatsapp || 'N/A'}<br>${new Date(req.time).toLocaleString()}<br>`;
+          if (req.status === "pending") {
+            box.innerHTML += `<button onclick="setStatus('${id}','approved')" class="bg-green-600 px-2 py-1 rounded mr-2">Approve</button>
+                               <button onclick="setStatus('${id}','rejected')" class="bg-red-600 px-2 py-1 rounded">Reject</button>`;
+            withdrawPending.appendChild(box);
+          } else if (req.status === "approved") {
+            withdrawApproved.appendChild(box);
+          } else {
+            withdrawRejected.appendChild(box);
+          }
+        });
       });
-    });
+    }
+    function setStatus(id, status) {
+      db.ref("withdrawals/" + id + "/status").set(status);
+    }
+    loadWithdrawals();
   </script>
 </body>
 </html>
