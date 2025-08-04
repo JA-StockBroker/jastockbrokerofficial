@@ -166,35 +166,48 @@
     }
 
     chartRef.on("value", snap => {
-      const data = snap.val();
-      const allCandles = Object.values(data || {});
-      const recentCandles = allCandles.slice(-50); // Show only last 50 candles
+  const data = snap.val();
+  const allCandles = Object.values(data || {});
 
-      const formatted = recentCandles.map((c, i) => ({
-        x: i,
-        y: [c.open, c.high, c.low, c.close]
-      }));
+  const formatted = allCandles.map(c => ({
+    x: new Date(c.timestamp),
+    y: [c.open, c.high, c.low, c.close]
+  }));
 
-      const chart = new ApexCharts(document.getElementById("chart"), {
-        chart: {
-          type: 'candlestick',
-          toolbar: { show: true },
-          zoom: { enabled: true },
-          animations: { enabled: false }
-        },
-        series: [{ data: formatted }],
-        xaxis: {
-          type: 'numeric',
-          labels: { show: false }
-        },
-        yaxis: {
-          labels: { formatter: v => '₹' + v.toFixed(2) }
+  const chart = new ApexCharts(document.getElementById("chart"), {
+    chart: {
+      type: 'candlestick',
+      toolbar: {
+        show: true,
+        tools: {
+          pan: true,
+          zoom: true,
+          zoomin: true,
+          zoomout: true,
+          reset: true
         }
-      });
+      },
+      zoom: {
+        enabled: true,
+        type: 'x',
+        autoScaleYaxis: true
+      },
+      animations: { enabled: false }
+    },
+    series: [{ data: formatted }],
+    xaxis: {
+      type: 'datetime',
+      labels: { show: true }
+    },
+    yaxis: {
+      labels: { formatter: v => '₹' + v.toFixed(2) }
+    }
+  });
 
-      document.getElementById("chart").innerHTML = ""; // Clear previous
-      chart.render();
-    });
+  document.getElementById("chart").innerHTML = ""; // Clear previous chart
+  chart.render();
+});
   </script>
 </body>
 </html>
+
