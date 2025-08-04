@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>JA Stock Trader</title>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.0.0/firebase-app-compat.js"></script>
@@ -15,7 +15,7 @@
 
     <div class="mb-4">
       <p>Welcome, <span id="usernameDisplay"></span></p>
-      <p>Balance: ₹<span id="balanceDisplay"></span></p>
+      <p>Balance: ₹<span id="balanceDisplay">0</span></p>
     </div>
 
     <div class="grid grid-cols-2 gap-2 mb-4">
@@ -29,7 +29,7 @@
     </div>
 
     <div id="chart" class="mb-6 h-64"></div>
-    <p>Live Price: ₹<span id="livePrice"></span></p>
+    <p>Live Price: ₹<span id="livePrice">0</span></p>
 
     <div class="mb-6">
       <h2 class="text-xl font-semibold mb-2">Open Trades</h2>
@@ -41,7 +41,7 @@
       <input id="withdrawAmount" placeholder="Amount" class="p-2 text-black rounded mb-2 w-full">
       <input id="withdrawWhatsApp" placeholder="WhatsApp Number" class="p-2 text-black rounded mb-2 w-full">
       <button onclick="requestWithdrawal()" class="bg-blue-500 px-4 py-2 rounded">Request Withdrawal</button>
-      <p class="text-yellow-400 text-sm mt-2">⚠️ 2% withdrawal fee applies. Payout in 2 business days.</p>
+      <p class="text-yellow-400 text-sm mt-2">⚠️ ₹1 + 2% fee applies. Payout in 2 business days.</p>
     </div>
 
     <div>
@@ -69,49 +69,48 @@
     document.getElementById("usernameDisplay").textContent = username;
 
     const chart = LightweightCharts.createChart(document.getElementById("chart"), {
-      layout: {
-        background: { color: '#111827' },
-        textColor: '#D1D5DB'
-      },
+      layout: { background: { color: '#111827' }, textColor: '#D1D5DB' },
       grid: { vertLines: { visible: true }, horzLines: { visible: true } },
       crosshair: { mode: 1 },
       rightPriceScale: { visible: true },
-      timeScale: { visible: true, timeVisible: true, secondsVisible: true },
+      timeScale: { visible: true, timeVisible: true, secondsVisible: true }
     });
     const candleSeries = chart.addCandlestickSeries();
 
-    function drawChart() {
-      db.ref("chart").on("value", snapshot => {
-        const data = snapshot.val() || [];
-        candleSeries.setData(data);
-        if (data.length > 0) {
-          const last = data[data.length - 1];
-          document.getElementById("livePrice").textContent = last.close.toFixed(2);
-        }
-      });
-    }
-
-    drawChart();
+    db.ref("chart").on("value", snapshot => {
+      const data = snapshot.val() || [];
+      candleSeries.setData(data);
+      if (data.length > 0) {
+        const last = data[data.length - 1];
+        document.getElementById("livePrice").textContent = last.close.toFixed(2);
+      }
+    });
 
     function placeTrade(type) {
       const qty = parseInt(document.getElementById("quantity").value);
       const tp = parseFloat(document.getElementById("tp").value);
       const sl = parseFloat(document.getElementById("sl").value);
       const entry = parseFloat(document.getElementById("livePrice").textContent);
-      if (!qty || !tp || !sl || !entry) return alert("Enter valid fields");
+
+      if (!qty || qty <= 0 || !tp || !sl || !entry) return alert("Fill all fields correctly.");
+      if ((type === 'buy' && (tp <= entry || sl >= entry)) || (type === 'sell' && (tp >= entry || sl <= entry))) {
+        return alert("Invalid TP/SL levels for " + type.toUpperCase());
+      }
 
       db.ref("users/" + username).once("value", snap => {
-        const data = snap.val();
-        const balance = data.balance || 0;
-        if (balance < 1) return alert("Min ₹1 required");
+        const user = snap.val();
+        const balance = user.balance || 0;
+        if (balance < 5) return alert("Insufficient balance (min ₹5 required)");
 
-        const trade = { type, qty, tp, sl, entry, open: true, time: Date.now() };
+        const tradeFee = 1;
+        const newBal = balance - tradeFee;
+        db.ref("users/" + username + "/balance").set(newBal);
+
+        const trade = {
+          type, qty, tp, sl, entry,
+          open: true, time: Date.now()
+        };
         db.ref("users/" + username + "/trades").push(trade);
-        db.ref("users/" + username + "/balance").set(balance - 1);
-        db.ref("users/admin/balance").once("value", adm => {
-          const ab = adm.val() || 0;
-          db.ref("users/admin/balance").set(ab + 1);
-        });
       });
     }
 
@@ -122,22 +121,28 @@
         container.innerHTML = "";
         Object.entries(data).forEach(([id, trade]) => {
           if (!trade.open) return;
-          const live = parseFloat(document.getElementById("livePrice").textContent);
-          const pnl = (trade.type === 'buy' ? 1 : -1) * (live - trade.entry) * trade.qty;
+          const current = parseFloat(document.getElementById("livePrice").textContent);
+          const pnl = ((trade.type === 'buy' ? 1 : -1) * (current - trade.entry) * trade.qty).toFixed(2);
+
+          // Draw lines
+          const now = Math.floor(Date.now() / 1000);
+          const drawLine = (price, color) => {
+            const line = chart.addLineSeries({ color, lineWidth: 1 });
+            line.setData([{ time: now, value: price }]);
+          };
+          drawLine(trade.entry, '#00f');
+          drawLine(trade.tp, '#0f0');
+          drawLine(trade.sl, '#f00');
 
           const div = document.createElement("div");
           div.className = "bg-gray-800 p-2 rounded";
           div.innerHTML = `
-            ${trade.type.toUpperCase()} ₹${trade.entry} x${trade.qty} | TP ₹${trade.tp} | SL ₹${trade.sl} | P&L: ₹${pnl.toFixed(2)}
-            <button onclick="closeTrade('${id}')" class="bg-yellow-500 ml-2 px-2 py-1 rounded">Close</button>
+            ${trade.type.toUpperCase()} ₹${trade.entry} x${trade.qty} |
+            TP ₹${trade.tp} | SL ₹${trade.sl} |
+            P&L: ₹${pnl}
+            <button class="bg-yellow-500 ml-2 px-2 py-1 rounded" onclick="closeTrade('${id}')">Close</button>
           `;
           container.appendChild(div);
-
-          if ((trade.type === 'buy' && (live >= trade.tp || live <= trade.sl)) ||
-              (trade.type === 'sell' && (live <= trade.tp || live >= trade.sl))) {
-            db.ref("users/" + username + "/trades/" + id + "/open").set(false);
-            alert("Trade closed: TP or SL hit.");
-          }
         });
       });
     }
@@ -147,11 +152,18 @@
     }
 
     function requestWithdrawal() {
-      const amt = document.getElementById("withdrawAmount").value;
+      const amt = parseFloat(document.getElementById("withdrawAmount").value);
       const wa = document.getElementById("withdrawWhatsApp").value;
       if (!amt || !wa) return alert("Fill all fields");
-      db.ref("withdrawals").push({ user: username, amount: amt, whatsapp: wa, time: Date.now(), status: "pending" });
-      alert("Withdrawal will be processed in 2 business days.");
+
+      db.ref("withdrawals").push({
+        user: username,
+        amount: amt,
+        whatsapp: wa,
+        time: Date.now(),
+        status: "pending"
+      });
+      alert("Request submitted.");
     }
 
     function loadTradeHistory() {
@@ -160,11 +172,12 @@
         const history = document.getElementById("tradeHistory");
         history.innerHTML = "";
         Object.entries(data).forEach(([id, trade]) => {
-          if (trade.open) return;
-          const div = document.createElement("div");
-          div.className = "bg-gray-700 p-2 rounded";
-          div.innerText = `${trade.type.toUpperCase()} ₹${trade.entry} x${trade.qty} | TP ₹${trade.tp} | SL ₹${trade.sl}`;
-          history.appendChild(div);
+          if (!trade.open) {
+            const div = document.createElement("div");
+            div.className = "bg-gray-700 p-2 rounded";
+            div.innerText = `${trade.type.toUpperCase()} ₹${trade.entry} x${trade.qty} | TP ₹${trade.tp} | SL ₹${trade.sl}`;
+            history.appendChild(div);
+          }
         });
       });
     }
