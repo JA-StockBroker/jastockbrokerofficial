@@ -165,14 +165,41 @@
       db.ref(`users/${user}/withdrawalRequests/${key}/status`).set(status);
     }
 
-    // Chart rendering logic
+    // Chart rendering with session grouping
     chartRef.on("value", snap => {
       const data = snap.val() || {};
       const allCandles = Object.values(data);
-      const formatted = allCandles.map((c, i) => ({
-        x: i,
-        y: [c.open, c.high, c.low, c.close]
-      }));
+      const formatted = [];
+      const annotations = [];
+      let lastDate = "";
+
+      allCandles.forEach(c => {
+        const ts = new Date(c.timestamp);
+        const dateStr = ts.toDateString();
+
+        if (dateStr !== lastDate) {
+          annotations.push({
+            x: ts.getTime(),
+            borderColor: "#00ff00",
+            label: {
+              text: dateStr,
+              style: {
+                background: "#0f0",
+                color: "#000",
+                fontWeight: "bold"
+              },
+              orientation: "horizontal",
+              offsetY: -10
+            }
+          });
+          lastDate = dateStr;
+        }
+
+        formatted.push({
+          x: ts,
+          y: [c.open, c.high, c.low, c.close]
+        });
+      });
 
       const chartOptions = {
         chart: {
@@ -180,15 +207,27 @@
           height: 400,
           animations: { enabled: false },
           toolbar: { show: true },
-          zoom: { enabled: true }
+          zoom: { enabled: true },
+          scrollablePlotArea: {
+            enabled: true,
+            minWidth: 2000
+          }
         },
         series: [{ data: formatted }],
         xaxis: {
-          type: 'numeric',
-          labels: { show: false }
+          type: 'datetime',
+          labels: {
+            datetimeUTC: false,
+            format: 'dd MMM HH:mm'
+          }
         },
         yaxis: {
-          labels: { formatter: v => '₹' + v.toFixed(2) }
+          labels: {
+            formatter: v => '₹' + v.toFixed(2)
+          }
+        },
+        annotations: {
+          xaxis: annotations
         }
       };
 
