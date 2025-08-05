@@ -8,18 +8,20 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
-    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    body { background: #0f172a; color: white; font-family: Arial, sans-serif; padding: 20px; }
     input, button { padding: 6px 10px; margin: 5px; }
-    #chart { background: white; border-radius: 10px; margin-top: 20px; }
+    #chart { background: #1e293b; border-radius: 10px; margin-top: 20px; overflow: auto; }
     .section { margin-top: 30px; }
     .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .logout-btn { float: right; margin-top: -35px; }
     .chart-toolbar { margin-top: 10px; }
+    .fullscreen-btn { float: right; margin-top: -35px; margin-right: 10px; }
   </style>
 </head>
 <body>
   <h1>Welcome, <span id="usernameDisplay"></span></h1>
   <button class="logout-btn" onclick="logout()">Logout</button>
+  <button class="fullscreen-btn" onclick="toggleFullscreen()">🔲 Fullscreen</button>
 
   <p>Market Status: <span id="marketStatus">Checking...</span> | Live Price: ₹<span id="livePrice">--</span></p>
   <p>Balance: ₹<span id="balanceDisplay">--</span></p>
@@ -88,6 +90,7 @@
     const tradesRef = db.ref("users/" + user + "/trades");
     let balance = 0;
     let currentPrice = 1;
+    let marketOpen = false;
     let chart;
 
     priceRef.on("value", snap => {
@@ -97,7 +100,9 @@
     });
 
     marketRef.on("value", snap => {
-      document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
+      marketOpen = snap.val();
+      document.getElementById("marketStatus").innerText = marketOpen ? "✅ Open" : "❌ Closed";
+      renderChart();
     });
 
     userRef.child("balance").on("value", snap => {
@@ -106,23 +111,21 @@
     });
 
     function placeTrade(type) {
-      marketRef.once("value", snap => {
-        if (!snap.val()) return alert("Market is closed");
-        if (balance < 5) return alert("Insufficient balance to trade.");
+      if (!marketOpen) return alert("Market is closed");
+      if (balance < 5) return alert("Insufficient balance to trade.");
 
-        const qty = parseInt(document.getElementById("qty").value);
-        const tp = parseFloat(document.getElementById("tp").value);
-        const sl = parseFloat(document.getElementById("sl").value);
-        const entry = currentPrice;
+      const qty = parseInt(document.getElementById("qty").value);
+      const tp = parseFloat(document.getElementById("tp").value);
+      const sl = parseFloat(document.getElementById("sl").value);
+      const entry = currentPrice;
 
-        if (type === 'buy' && (tp <= entry || sl >= entry)) return alert("Invalid TP/SL for Buy");
-        if (type === 'sell' && (tp >= entry || sl <= entry)) return alert("Invalid TP/SL for Sell");
+      if (type === 'buy' && (tp <= entry || sl >= entry)) return alert("Invalid TP/SL for Buy");
+      if (type === 'sell' && (tp >= entry || sl <= entry)) return alert("Invalid TP/SL for Sell");
 
-        const trade = { type, qty, entry, tp, sl, status: "open", time: Date.now() };
-        tradesRef.push(trade);
-        userRef.child("balance").set(balance - 1);
-        alert("Trade placed ✅");
-      });
+      const trade = { type, qty, entry, tp, sl, status: "open", time: Date.now() };
+      tradesRef.push(trade);
+      userRef.child("balance").set(balance - 1);
+      alert("Trade placed ✅");
     }
 
     function logout() {
@@ -182,6 +185,12 @@
       alert("Trade closed manually ✅");
     }
 
+    function toggleFullscreen() {
+      const chartEl = document.getElementById("chart");
+      if (!document.fullscreenElement) chartEl.requestFullscreen();
+      else document.exitFullscreen();
+    }
+
     function renderChart() {
       db.ref("market/chart").once("value", snap => {
         const candles = [];
@@ -205,26 +214,36 @@
             }
           }
 
+          if (marketOpen && candles.length > 0) {
+            annotations.push({
+              x: candles[candles.length - 1].x,
+              strokeDashArray: 4,
+              borderColor: '#ff0',
+              label: {
+                borderColor: '#ff0',
+                style: { color: '#000', background: '#ff0' },
+                text: 'Live Candle'
+              }
+            });
+          }
+
           const chartOptions = {
             chart: {
               type: 'candlestick',
               height: 400,
               animations: { enabled: false },
               toolbar: { autoSelected: 'pan', show: true },
-              zoom: { enabled: true }
+              zoom: { enabled: true },
+              background: '#1e293b'
             },
             series: [{ data: candles }],
-            xaxis: {
-              type: 'category',
-              labels: { show: false }
-            },
+            xaxis: { type: 'datetime' },
             yaxis: { labels: { formatter: val => '₹' + val.toFixed(2) } },
-            annotations: { yaxis: annotations }
+            annotations: { yaxis: annotations, xaxis: annotations }
           };
 
-          const chartDiv = document.querySelector("#chart");
-          chartDiv.innerHTML = "";
-          chart = new ApexCharts(chartDiv, chartOptions);
+          document.getElementById("chart").innerHTML = "";
+          chart = new ApexCharts(document.querySelector("#chart"), chartOptions);
           chart.render();
         });
       });
