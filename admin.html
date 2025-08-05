@@ -12,6 +12,7 @@
     #chart { background: white; border-radius: 10px; margin-top: 20px; height: 400px; overflow: auto; }
     .user-card { background: #1e293b; padding: 10px; margin: 10px 0; border-radius: 6px; }
     .section { margin-top: 30px; }
+    .chart-toolbar { margin-top: 10px; }
     .withdrawal-card { background: #334155; padding: 8px; margin: 5px 0; border-radius: 6px; }
   </style>
 </head>
@@ -27,6 +28,10 @@
   <button onclick="simulateCandle('buy')">⬆ Buy</button>
   <button onclick="simulateCandle('sell')">⬇ Sell</button>
 
+  <div class="chart-toolbar">
+    <button onclick="renderChart()">🔄 Reset Zoom</button>
+    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
+  </div>
   <div id="chart"></div>
 
   <div class="section">
@@ -101,6 +106,22 @@
       alert("Chart Reset 🔄");
     }
 
+    function toggleFullscreen() {
+      const chart = document.getElementById("chart");
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        chart.requestFullscreen();
+      }
+    }
+    function renderChart() {
+      db.ref("market/chart").once("value", snap => {
+        const candles = [];
+        const annotations = [];
+        snap.forEach(child => {
+          const c = child.val();
+          candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
+        });
     function addUser() {
       const u = document.getElementById("newUser").value;
       const p = document.getElementById("newPass").value;
@@ -198,3 +219,4 @@
   </script>
 </body>
 </html>
+
