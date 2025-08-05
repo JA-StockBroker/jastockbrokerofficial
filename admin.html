@@ -106,22 +106,7 @@
       alert("Chart Reset 🔄");
     }
 
-    function toggleFullscreen() {
-      const chart = document.getElementById("chart");
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        chart.requestFullscreen();
-      }
-    }
-    function renderChart() {
-      db.ref("market/chart").once("value", snap => {
-        const candles = [];
-        const annotations = [];
-        snap.forEach(child => {
-          const c = child.val();
-          candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
-        });
+  
     function addUser() {
       const u = document.getElementById("newUser").value;
       const p = document.getElementById("newPass").value;
@@ -216,7 +201,25 @@
       document.getElementById("chart").innerHTML = "";
       chart.render();
     });
+
+     function toggleFullscreen() {
+      const chart = document.getElementById("chart");
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        chart.requestFullscreen();
+      }
+    }
+    function renderChart() {
+      db.ref("market/chart").once("value", snap => {
+        const candles = [];
+        const annotations = [];
+        snap.forEach(child => {
+          const c = child.val();
+          candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
+        });
   </script>
 </body>
 </html>
+
 
