@@ -1,21 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JA Trader Panel</title>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
-    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    body { background: #0f172a; color: white; font-family: Arial, sans-serif; padding: 20px; }
     input, button { padding: 6px 10px; margin: 5px; }
-    #chart { background: #0f172a; border-radius: 10px; margin-top: 20px; overflow: auto; }
+    #chart { background: #1e293b; border-radius: 10px; margin-top: 20px; overflow: auto; }
     .section { margin-top: 30px; }
     .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .logout-btn { float: right; margin-top: -35px; }
     .chart-toolbar { margin-top: 10px; }
-    #fullscreenBtn { float: right; margin-left: 10px; }
+    button { background: #22c55e; border: none; color: white; border-radius: 5px; cursor: pointer; }
+    button:hover { opacity: 0.9; }
   </style>
 </head>
 <body>
@@ -43,7 +44,7 @@
 
   <div class="chart-toolbar">
     <button onclick="renderChart()">🔄 Reset Zoom</button>
-    <button id="fullscreenBtn">🖵 Fullscreen</button>
+    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
   </div>
   <div id="chart" style="height: 400px;"></div>
 
@@ -68,15 +69,7 @@
   </div>
 
   <script>
-    const config = {
-      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
-      authDomain: "brokerja-74512.firebaseapp.com",
-      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "brokerja-74512",
-      storageBucket: "brokerja-74512.appspot.com",
-      messagingSenderId: "1048821297447",
-      appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
-    };
+    const config = { /* Firebase Config */ };
     firebase.initializeApp(config);
     const db = firebase.database();
 
@@ -87,11 +80,8 @@
     const userRef = db.ref("users/" + user);
     const priceRef = db.ref("market/currentPrice");
     const marketRef = db.ref("market/isOpen");
-    const tradesRef = db.ref("users/" + user + "/trades");
-    const chartRef = db.ref("market/chart");
-    let balance = 0;
-    let currentPrice = 1;
-    let chart;
+    const tradesRef = userRef.child("trades");
+    let balance = 0, currentPrice = 1;
 
     priceRef.on("value", snap => {
       currentPrice = parseFloat(snap.val() || 1);
@@ -111,7 +101,7 @@
     function placeTrade(type) {
       marketRef.once("value", snap => {
         if (!snap.val()) return alert("Market is closed");
-        if (balance < 5) return alert("Insufficient balance to trade.");
+        if (balance < 1) return alert("Insufficient balance to trade.");
 
         const qty = parseInt(document.getElementById("qty").value);
         const tp = parseFloat(document.getElementById("tp").value);
@@ -138,7 +128,7 @@
       const phone = document.getElementById("withdrawPhone").value;
       if (!amount || !phone) return alert("Fill all fields");
       db.ref("users/" + user + "/withdrawalRequests").push({ amount, phone, status: "pending", time: Date.now() });
-      alert("Withdrawal will be processed in 2 business days ✅");
+      alert("Withdrawal request sent ✅");
     }
 
     function updateOpenTrades() {
@@ -185,68 +175,62 @@
       alert("Trade closed manually ✅");
     }
 
+    function toggleFullscreen() {
+      const chart = document.getElementById("chart");
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        chart.requestFullscreen();
+      }
+    }
+
     function renderChart() {
-      chartRef.once("value", snap => {
+      db.ref("market/chart").once("value", snap => {
         const candles = [];
         const annotations = [];
-
         snap.forEach(child => {
           const c = child.val();
-          candles.push({ x: new Date(c.timestamp).getTime(), y: [c.open, c.high, c.low, c.close] });
+          candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
         });
 
-        // Add live marker on last candle
-        const last = candles[candles.length - 1];
-        if (last) {
-          annotations.push({
-            x: last.x,
-            borderColor: '#ff0',
-            label: {
-              text: 'Live Candle',
-              style: { background: '#ff0', color: '#000' }
+        tradesRef.once("value", snap => {
+          const trades = snap.val() || {};
+          for (let key in trades) {
+            const t = trades[key];
+            if (t.status === "open") {
+              annotations.push(
+                { y: t.entry, borderColor: '#00f', label: { text: `Entry ₹${t.entry}`, style: { color: '#fff', background: '#00f' } } },
+                { y: t.tp, borderColor: '#0f0', label: { text: `TP ₹${t.tp}`, style: { color: '#fff', background: '#0f0' } } },
+                { y: t.sl, borderColor: '#f00', label: { text: `SL ₹${t.sl}`, style: { color: '#fff', background: '#f00' } } }
+              );
             }
-          });
-        }
+          }
 
-        const chartOptions = {
-          chart: {
-            type: 'candlestick',
-            height: 400,
-            background: '#0f172a',
-            animations: { enabled: false },
-            zoom: { enabled: true, type: 'xy', pinch: { enabled: true } },
-            toolbar: {
-              show: true,
-              autoSelected: 'pan',
-              tools: { zoom: true, zoomin: true, zoomout: true, pan: true, reset: true, download: true, selection: true }
-            }
-          },
-          series: [{ data: candles }],
-          xaxis: {
-            type: 'numeric',
-            labels: { show: false },
-            axisTicks: { show: false },
-            axisBorder: { show: false }
-          },
-          yaxis: {
-            tooltip: { enabled: true },
-            labels: { formatter: v => '₹' + v.toFixed(2) }
-          },
-          annotations: { xaxis: annotations }
-        };
+          const chartOptions = {
+            chart: {
+              type: 'candlestick',
+              height: 400,
+              animations: { enabled: false },
+              toolbar: { show: true, autoSelected: 'pan' },
+              zoom: { enabled: true, type: 'xy' },
+              pan: { enabled: true, type: 'xy', free: true },
+              foreColor: '#fff'
+            },
+            series: [{ data: candles }],
+            xaxis: { type: 'category', labels: { show: false } },
+            yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
+            annotations: { yaxis: annotations }
+          };
 
-        document.getElementById("chart").innerHTML = "";
-        chart = new ApexCharts(document.getElementById("chart"), chartOptions);
-        chart.render();
+          const chartDiv = document.getElementById("chart");
+          chartDiv.innerHTML = "";
+          const chart = new ApexCharts(chartDiv, chartOptions);
+          chart.render();
+        });
       });
     }
 
     renderChart();
-
-    document.getElementById("fullscreenBtn").onclick = () => {
-      const chartDiv = document.getElementById("chart");
-      if (chartDiv.requestFullscreen) chartDiv.requestFullscreen();
-    };
   </script>
 </body>
 </html>
