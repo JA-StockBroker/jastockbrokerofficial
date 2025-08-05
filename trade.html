@@ -10,12 +10,12 @@
   <style>
     body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
     input, button { padding: 6px 10px; margin: 5px; }
-    #chart-container { overflow: scroll; max-width: 100%; background: #1e1e2f; border-radius: 10px; }
-    #chart { width: 2000px; height: 500px; }
+    #chart { background: #0f172a; border-radius: 10px; margin-top: 20px; overflow: auto; }
     .section { margin-top: 30px; }
     .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .logout-btn { float: right; margin-top: -35px; }
     .chart-toolbar { margin-top: 10px; }
+    #fullscreenBtn { float: right; margin-left: 10px; }
   </style>
 </head>
 <body>
@@ -43,9 +43,9 @@
 
   <div class="chart-toolbar">
     <button onclick="renderChart()">🔄 Reset Zoom</button>
-    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <button id="fullscreenBtn">🖵 Fullscreen</button>
   </div>
-  <div id="chart-container"><div id="chart"></div></div>
+  <div id="chart" style="height: 400px;"></div>
 
   <div class="section">
     <h2>Open Trades</h2>
@@ -88,10 +88,10 @@
     const priceRef = db.ref("market/currentPrice");
     const marketRef = db.ref("market/isOpen");
     const tradesRef = db.ref("users/" + user + "/trades");
+    const chartRef = db.ref("market/chart");
     let balance = 0;
     let currentPrice = 1;
     let chart;
-    let marketIsOpen = false;
 
     priceRef.on("value", snap => {
       currentPrice = parseFloat(snap.val() || 1);
@@ -100,9 +100,7 @@
     });
 
     marketRef.on("value", snap => {
-      marketIsOpen = snap.val();
-      document.getElementById("marketStatus").innerText = marketIsOpen ? "✅ Open" : "❌ Closed";
-      renderChart();
+      document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
     });
 
     userRef.child("balance").on("value", snap => {
@@ -188,74 +186,67 @@
     }
 
     function renderChart() {
-      db.ref("market/chart").once("value", snap => {
+      chartRef.once("value", snap => {
         const candles = [];
         const annotations = [];
 
         snap.forEach(child => {
           const c = child.val();
-          candles.push({ x: candles.length, y: [c.open, c.high, c.low, c.close] });
+          candles.push({ x: new Date(c.timestamp).getTime(), y: [c.open, c.high, c.low, c.close] });
         });
 
-        tradesRef.once("value", snap => {
-          const trades = snap.val() || {};
-          for (let key in trades) {
-            const t = trades[key];
-            if (t.status === "open") {
-              annotations.push(
-                { y: t.entry, borderColor: '#00f', label: { text: `Entry ₹${t.entry}`, style: { color: '#fff', background: '#00f' } } },
-                { y: t.tp, borderColor: '#0f0', label: { text: `TP ₹${t.tp}`, style: { color: '#fff', background: '#0f0' } } },
-                { y: t.sl, borderColor: '#f00', label: { text: `SL ₹${t.sl}`, style: { color: '#fff', background: '#f00' } } }
-              );
+        // Add live marker on last candle
+        const last = candles[candles.length - 1];
+        if (last) {
+          annotations.push({
+            x: last.x,
+            borderColor: '#ff0',
+            label: {
+              text: 'Live Candle',
+              style: { background: '#ff0', color: '#000' }
             }
-          }
+          });
+        }
 
-          const chartOptions = {
-            chart: {
-              type: 'candlestick',
-              height: 500,
-              background: '#1e1e2f',
-              animations: { enabled: false },
-              toolbar: { show: true, tools: { download: true, selection: true, zoom: true, pan: true, reset: true } },
-              zoom: { enabled: true },
-              foreColor: '#ffffff',
-              id: 'candlesChart'
-            },
-            series: [{ data: candles }],
-            xaxis: {
-              type: 'numeric',
-              labels: { show: false }
-            },
-            yaxis: { labels: { formatter: val => '₹' + val.toFixed(2) } },
-            annotations: {
-              yaxis: annotations,
-              ...(marketIsOpen && candles.length ? { xaxis: [{ x: candles.length - 1, borderColor: '#fff', label: { text: "LIVE", style: { background: '#111' } } }] } : {})
-            },
-            tooltip: {
-              enabled: true,
-              shared: true,
-              custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-                const ohlc = w.globals.initialSeries[seriesIndex].data[dataPointIndex].y;
-                return `Open: ₹${ohlc[0]}<br>High: ₹${ohlc[1]}<br>Low: ₹${ohlc[2]}<br>Close: ₹${ohlc[3]}`;
-              }
+        const chartOptions = {
+          chart: {
+            type: 'candlestick',
+            height: 400,
+            background: '#0f172a',
+            animations: { enabled: false },
+            zoom: { enabled: true, type: 'xy', pinch: { enabled: true } },
+            toolbar: {
+              show: true,
+              autoSelected: 'pan',
+              tools: { zoom: true, zoomin: true, zoomout: true, pan: true, reset: true, download: true, selection: true }
             }
-          };
+          },
+          series: [{ data: candles }],
+          xaxis: {
+            type: 'numeric',
+            labels: { show: false },
+            axisTicks: { show: false },
+            axisBorder: { show: false }
+          },
+          yaxis: {
+            tooltip: { enabled: true },
+            labels: { formatter: v => '₹' + v.toFixed(2) }
+          },
+          annotations: { xaxis: annotations }
+        };
 
-          const chartDiv = document.querySelector("#chart");
-          chartDiv.innerHTML = "";
-          chart = new ApexCharts(chartDiv, chartOptions);
-          chart.render();
-        });
+        document.getElementById("chart").innerHTML = "";
+        chart = new ApexCharts(document.getElementById("chart"), chartOptions);
+        chart.render();
       });
     }
 
-    function toggleFullscreen() {
-      const el = document.documentElement;
-      if (!document.fullscreenElement) el.requestFullscreen();
-      else if (document.exitFullscreen) document.exitFullscreen();
-    }
-
     renderChart();
+
+    document.getElementById("fullscreenBtn").onclick = () => {
+      const chartDiv = document.getElementById("chart");
+      if (chartDiv.requestFullscreen) chartDiv.requestFullscreen();
+    };
   </script>
 </body>
 </html>
