@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>JA Stock Broker Admin</title>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -17,19 +17,14 @@
 </head>
 <body>
   <h1>Admin Panel</h1>
-
   <button onclick="openMarket()">Open Market</button>
   <button onclick="closeMarket()">Close Market</button>
   <button onclick="resetChart()">Reset Chart</button>
-  <button onclick="toggleFullscreen()">🖥 Fullscreen</button>
-
   <p>Live Price: ₹<span id="livePrice">--</span></p>
   <input type="number" id="qty" placeholder="Qty" value="1" min="1">
   <button onclick="simulateCandle('buy')">⬆ Buy</button>
   <button onclick="simulateCandle('sell')">⬇ Sell</button>
-
   <div id="chart"></div>
-
   <div class="section">
     <h2>Users</h2>
     <input id="newUser" placeholder="Username">
@@ -38,7 +33,6 @@
     <button onclick="addUser()">Add User</button>
     <div id="userList"></div>
   </div>
-
   <div class="section">
     <h2>Withdrawals</h2>
     <h3>Pending</h3>
@@ -48,7 +42,6 @@
     <h3>Rejected</h3>
     <div id="rejectedWithdrawals"></div>
   </div>
-
   <script>
     const config = {
       apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
@@ -68,7 +61,6 @@
     const marketRef = db.ref("market/isOpen");
 
     let currentPrice = 1.0;
-    let chart;
 
     priceRef.on("value", snap => {
       currentPrice = parseFloat(snap.val() || 1);
@@ -154,7 +146,7 @@
           const div = document.createElement("div");
           div.className = "withdrawal-card";
           div.innerHTML = `
-            <strong>${u}</strong> ₹${req.amount} | ${req.contact || ''}<br>
+            <strong>${u}</strong> ₹${req.amount} | ${req.phone || ''}<br>
             <button onclick="updateWithdrawal('${u}','${key}','approved')">✅ Approve</button>
             <button onclick="updateWithdrawal('${u}','${key}','rejected')">❌ Reject</button>
           `;
@@ -167,21 +159,11 @@
       db.ref(`users/${user}/withdrawalRequests/${key}/status`).set(status);
     }
 
-    function toggleFullscreen() {
-      const el = document.documentElement;
-      if (!document.fullscreenElement) {
-        el.requestFullscreen().catch(err => alert(`Error attempting to enable full-screen mode: ${err.message}`));
-      } else {
-        document.exitFullscreen();
-      }
-    }
-
-    // Render chart with pan and no gaps
     chartRef.on("value", snap => {
-      const data = snap.val() || {};
-      const allCandles = Object.values(data);
-      const formatted = allCandles.map((c, i) => ({
-        x: i,
+      const data = snap.val();
+      const candles = Object.values(data || {});
+      const formatted = candles.map(c => ({
+        x: new Date(c.timestamp),
         y: [c.open, c.high, c.low, c.close]
       }));
 
@@ -190,29 +172,17 @@
           type: 'candlestick',
           height: 400,
           animations: { enabled: false },
-          toolbar: {
-            show: true,
-            tools: { pan: true, zoom: true, reset: true },
-            autoSelected: 'pan'
-          },
-          zoom: { enabled: true },
-          pan: { enabled: true }
+          toolbar: { show: true, autoSelected: 'pan' },
+          zoom: { enabled: true }
         },
         series: [{ data: formatted }],
-        xaxis: {
-          type: 'numeric',
-          labels: { show: false }, // No time bar
-          tickAmount: 10
-        },
-        yaxis: {
-          labels: { formatter: v => '₹' + v.toFixed(2) },
-          floating: false
-        }
+        xaxis: { type: 'datetime', labels: { show: false } },
+        yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } }
       };
 
       const chartDiv = document.getElementById("chart");
       chartDiv.innerHTML = "";
-      chart = new ApexCharts(chartDiv, chartOptions);
+      const chart = new ApexCharts(chartDiv, chartOptions);
       chart.render();
     });
   </script>
