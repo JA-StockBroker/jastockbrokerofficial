@@ -159,20 +159,22 @@
 
           let close = false;
           let pnl = 0;
-          // Check for TP hit
+          
+          // Check for TP hit (profit)
           if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) {
             close = true;
             pnl = (t.type === 'buy' ? (t.tp - t.entry) : (t.entry - t.tp)) * t.qty;
           }
-          // Check for SL hit
+          // Check for SL hit (loss)
           else if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) {
             close = true;
             pnl = (t.type === 'buy' ? (t.sl - t.entry) : (t.entry - t.sl)) * t.qty;
           }
 
           if (close) {
+            // For SL hits, pnl will be negative, so balance will decrease
             tradesRef.child(key).update({ status: "closed", pnl });
-            userRef.child("balance").set(balance + pnl);
+            userRef.child("balance").set(balance + pnl); // Adding negative pnl = deduction
             continue;
           }
 
@@ -185,11 +187,6 @@
       });
     }
 
-    function manualClose(key, pnl) {
-      tradesRef.child(key).update({ status: "closed", pnl: parseFloat(pnl) });
-      userRef.child("balance").set(balance + parseFloat(pnl));
-      alert("Trade closed manually ✅");
-    }
 
     function toggleFullscreen() {
       const chart = document.getElementById("chart");
@@ -250,6 +247,7 @@
   </script>
 </body>
 </html>
+
 
 
 
