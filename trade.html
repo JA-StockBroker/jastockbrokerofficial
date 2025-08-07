@@ -106,10 +106,11 @@
       document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
     });
 
-    function placeTrade(type) {
+   const oldPlaceTrade = placeTrade;
+    placeTrade = function(type) {
       marketRef.once("value", snap => {
         if (!snap.val()) return alert("Market is closed");
-        if (balance < 1) return alert("Insufficient balance to trade.");
+        if (balance < 5.1) return alert("Insufficient balance to trade. Minimum required ₹5.1");
 
         const qty = parseInt(document.getElementById("qty").value);
         const tp = parseFloat(document.getElementById("tp").value);
@@ -124,6 +125,49 @@
         userRef.child("balance").set(balance - 1);
         alert("Trade placed ✅");
       });
+    };
+        function updateOpenTrades() {
+      tradesRef.once("value", snap => {
+        const data = snap.val() || {};
+        const openBox = document.getElementById("openTrades");
+        const histBox = document.getElementById("tradeHistory");
+        openBox.innerHTML = "";
+        histBox.innerHTML = "";
+        let wins = 0, losses = 0, total = 0;
+
+        for (let key in data) {
+          const t = data[key];
+          if (t.status === "closed") {
+            total++;
+            if (t.pnl > 0) wins++; else losses++;
+            histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)}</div>`;
+            continue;
+          }
+
+          let close = false, pnl = 0;
+          if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) close = true;
+          if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) close = true;
+
+          pnl = (t.type === 'buy' ? (currentPrice - t.entry) : (t.entry - currentPrice)) * t.qty;
+
+          if (close) {
+            tradesRef.child(key).update({ status: "closed", pnl });
+            userRef.child("balance").set(balance + pnl);
+            continue;
+          }
+
+          openBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>Live P&L: ₹${pnl.toFixed(2)}<br><button onclick="manualClose('${key}', ${pnl})">❌ Close</button></div>`;
+        }
+        document.getElementById("totalTrades").innerText = total;
+        document.getElementById("wins").innerText = wins;
+        document.getElementById("losses").innerText = losses;
+      });
+    }
+
+    function manualClose(key, pnl) {
+      tradesRef.child(key).update({ status: "closed", pnl });
+      userRef.child("balance").set(balance + parseFloat(pnl));
+      alert("Trade closed manually ✅");
     }
 
     function logout() {
@@ -195,53 +239,10 @@
     }
 
     renderChart();
-
-        function updateOpenTrades() {
-      tradesRef.once("value", snap => {
-        const data = snap.val() || {};
-        const openBox = document.getElementById("openTrades");
-        const histBox = document.getElementById("tradeHistory");
-        openBox.innerHTML = "";
-        histBox.innerHTML = "";
-        let wins = 0, losses = 0, total = 0;
-
-        for (let key in data) {
-          const t = data[key];
-          if (t.status === "closed") {
-            total++;
-            if (t.pnl > 0) wins++; else losses++;
-            histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)}</div>`;
-            continue;
-          }
-
-          let close = false, pnl = 0;
-          if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) close = true;
-          if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) close = true;
-
-          pnl = (t.type === 'buy' ? (currentPrice - t.entry) : (t.entry - currentPrice)) * t.qty;
-
-          if (close) {
-            tradesRef.child(key).update({ status: "closed", pnl });
-            userRef.child("balance").set(balance + pnl);
-            continue;
-          }
-
-          openBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>Live P&L: ₹${pnl.toFixed(2)}<br><button onclick="manualClose('${key}', ${pnl})">❌ Close</button></div>`;
-        }
-        document.getElementById("totalTrades").innerText = total;
-        document.getElementById("wins").innerText = wins;
-        document.getElementById("losses").innerText = losses;
-      });
-    }
-
-    function manualClose(key, pnl) {
-      tradesRef.child(key).update({ status: "closed", pnl });
-      userRef.child("balance").set(balance + parseFloat(pnl));
-      alert("Trade closed manually ✅");
-    }
   </script>
 </body>
 </html> 
+
 
 
 
