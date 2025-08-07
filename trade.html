@@ -1,44 +1,76 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JA Trader Panel</title>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
-    body { background: #121212; color: white; font-family: Arial; padding: 20px; }
-    .input, button { padding: 8px; margin: 5px; border-radius: 5px; }
-    .btn { padding: 10px 15px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; }
-    .error { color: red; }
-    .success { color: green; }
-    .card { background: #1f1f1f; padding: 10px; margin-top: 10px; border-radius: 5px; }
+    body { background: #0f172a; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    input, button { padding: 6px 10px; margin: 5px; }
+    #chart { background: #1e293b; border-radius: 10px; margin-top: 20px; overflow: auto; }
+    .section { margin-top: 30px; }
+    .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    .logout-btn { float: right; margin-top: -35px; }
+    .chart-toolbar { margin-top: 10px; }
+    button { background: #22c55e; border: none; color: white; border-radius: 5px; cursor: pointer; }
+    button:hover { opacity: 0.9; }
   </style>
 </head>
 <body>
-  <h2>Welcome to JA Broker Trader Panel</h2>
+  <h1>Welcome, <span id="usernameDisplay"></span></h1>
+  <button class="logout-btn" onclick="logout()">Logout</button>
+
+  <p>Market Status: <span id="marketStatus">Checking...</span> | Live Price: ₹<span id="livePrice">--</span></p>
+  <p>Balance: ₹<span id="balanceDisplay">--</span></p>
+
   <div>
-    <input id="username" placeholder="Username" class="input" />
-    <input id="password" placeholder="Password" class="input" />
-    <button onclick="login()" class="btn">Login</button>
+    <label>Qty:</label><input type="number" id="qty" value="1" min="1">
+    <label>TP:</label><input type="number" id="tp">
+    <label>SL:</label><input type="number" id="sl">
+    <button onclick="placeTrade('buy')">Buy</button>
+    <button onclick="placeTrade('sell')">Sell</button>
   </div>
 
-  <div id="panel" style="display:none;">
-    <h3>Balance: ₹<span id="balance">0</span></h3>
-    <input id="qty" type="number" placeholder="Quantity" class="input" />
-    <input id="entry" type="number" placeholder="Entry Price" class="input" />
-    <select id="type" class="input">
-      <option value="buy">Buy</option>
-      <option value="sell">Sell</option>
-    </select>
-    <button onclick="placeTrade()" class="btn">Place Trade</button>
-    <div id="message" class="error"></div>
-    <h4>Trade History</h4>
-    <div id="history"></div>
+  <div class="section">
+    <h2>Withdraw Funds</h2>
+    <input id="withdrawAmt" type="number" placeholder="Amount">
+    <input id="withdrawPhone" placeholder="WhatsApp Number">
+    <button onclick="requestWithdrawal()">Request Withdrawal</button>
+    <p style="color:orange">⚠️ 2% withdrawal fee applies. Process in 2 business days.</p>
+  </div>
+
+  <div class="chart-toolbar">
+    <button onclick="renderChart()">🔄 Reset Zoom</button>
+    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
+  </div>
+  <div id="chart" style="height: 400px;"></div>
+
+  <div class="section">
+    <h2>Open Trades</h2>
+    <div id="openTrades"></div>
+  </div>
+
+  <div class="section">
+    <h2>Withdrawals</h2>
+    <div id="withdrawals"></div>
+  </div>
+
+  <div class="section">
+    <h2>Trade History</h2>
+    <div id="tradeHistory"></div>
+  </div>
+
+  <div class="section">
+    <h2>Performance Summary</h2>
+    <p>Total Trades: <span id="totalTrades">0</span> | Wins: <span id="wins">0</span> | Losses: <span id="losses">0</span></p>
   </div>
 
   <script>
-    const config = {
-      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
+    const config = { /* Firebase Config */
+    apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
       authDomain: "brokerja-74512.firebaseapp.com",
       databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "brokerja-74512",
@@ -48,81 +80,171 @@
     };
     firebase.initializeApp(config);
     const db = firebase.database();
-    let currentUser = "";
 
-    function login() {
-      const u = document.getElementById("username").value;
-      const p = document.getElementById("password").value;
-      db.ref("users/" + u).once("value", snap => {
-        const user = snap.val();
-        if (user && user.password === p) {
-          currentUser = u;
-          document.getElementById("panel").style.display = "block";
-          updateBalance();
-          loadTrades();
-        } else {
-          alert("Invalid credentials");
+    const user = sessionStorage.getItem("username");
+    if (!user) location.href = "login.html";
+    document.getElementById("usernameDisplay").innerText = user;
+
+    const userRef = db.ref("users/" + user);
+    const priceRef = db.ref("market/currentPrice");
+    const marketRef = db.ref("market/isOpen");
+    const tradesRef = userRef.child("trades");
+    let balance = 0, currentPrice = 1;
+
+    priceRef.on("value", snap => {
+      currentPrice = parseFloat(snap.val() || 1);
+      document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
+      updateOpenTrades();
+    });
+
+    marketRef.on("value", snap => {
+      document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
+    });
+
+    userRef.child("balance").on("value", snap => {
+      balance = parseFloat(snap.val() || 0);
+      document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
+    });
+
+    function placeTrade(type) {
+      marketRef.once("value", snap => {
+        if (!snap.val()) return alert("Market is closed");
+        if (balance < 5) return alert("Insufficient balance to trade. Minimum ₹5 required");
+
+        const qty = parseInt(document.getElementById("qty").value);
+        const tp = parseFloat(document.getElementById("tp").value);
+        const sl = parseFloat(document.getElementById("sl").value);
+        const entry = currentPrice;
+
+        if (type === 'buy' && (tp <= entry || sl >= entry)) return alert("Invalid TP/SL for Buy");
+        if (type === 'sell' && (tp >= entry || sl <= entry)) return alert("Invalid TP/SL for Sell");
+
+        const trade = { type, qty, entry, tp, sl, status: "open", time: Date.now() };
+        tradesRef.push(trade);
+        userRef.child("balance").set(balance - 1);
+        alert("Trade placed ✅");
+      });
+    }
+
+    function logout() {
+      sessionStorage.clear();
+      location.href = "login.html";
+    }
+
+    function requestWithdrawal() {
+      const amount = parseFloat(document.getElementById("withdrawAmt").value);
+      const phone = document.getElementById("withdrawPhone").value;
+      if (!amount || !phone) return alert("Fill all fields");
+      db.ref("users/" + user + "/withdrawalRequests").push({ amount, phone, status: "pending", time: Date.now() });
+      alert("Withdrawal request sent ✅");
+    }
+
+    function updateOpenTrades() {
+      tradesRef.once("value", snap => {
+        const data = snap.val() || {};
+        const openBox = document.getElementById("openTrades");
+        const histBox = document.getElementById("tradeHistory");
+        openBox.innerHTML = "";
+        histBox.innerHTML = "";
+        let wins = 0, losses = 0, total = 0;
+
+        for (let key in data) {
+          const t = data[key];
+          if (t.status === "closed") {
+            total++;
+            if (t.pnl > 0) wins++; else losses++;
+            histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${(t.pnl > 0 ? '+' : '') + t.pnl?.toFixed(2)}</div>`;
+            continue;
+          }
+
+          let close = false;
+          let pnl = 0;
+          if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) {
+            close = true;
+            pnl = (t.type === 'buy' ? (t.tp - t.entry) : (t.entry - t.tp)) * t.qty;
+          }
+          if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) {
+            close = true;
+            pnl = (t.type === 'buy' ? (t.sl - t.entry) : (t.entry - t.sl)) * t.qty;
+          }
+
+          if (close) {
+            tradesRef.child(key).update({ status: "closed", pnl });
+            userRef.child("balance").set(balance + pnl);
+            continue;
+          }
+
+          const currentPnl = ((t.type === 'buy' ? currentPrice - t.entry : t.entry - currentPrice) * t.qty).toFixed(2);
+          openBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>Live P&L: ₹${(currentPnl > 0 ? '+' : '') + currentPnl}<br><button onclick="manualClose('${key}', ${currentPnl})">❌ Close</button></div>`;
         }
+        document.getElementById("totalTrades").innerText = total;
+        document.getElementById("wins").innerText = wins;
+        document.getElementById("losses").innerText = losses;
       });
     }
 
-    function updateBalance() {
-      db.ref("users/" + currentUser + "/balance").on("value", snap => {
-        document.getElementById("balance").innerText = parseFloat(snap.val()).toFixed(2);
-      });
+    function manualClose(key, pnl) {
+      tradesRef.child(key).update({ status: "closed", pnl: parseFloat(pnl) });
+      userRef.child("balance").set(balance + parseFloat(pnl));
+      alert("Trade closed manually ✅");
     }
 
-    function placeTrade() {
-      const qty = parseFloat(document.getElementById("qty").value);
-      const entry = parseFloat(document.getElementById("entry").value);
-      const type = document.getElementById("type").value;
-      if (isNaN(qty) || isNaN(entry)) {
-        document.getElementById("message").innerText = "Please fill all fields.";
-        return;
+    function toggleFullscreen() {
+      const chart = document.getElementById("chart");
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        chart.requestFullscreen();
       }
+    }
 
-      db.ref("users/" + currentUser + "/balance").once("value", snap => {
-        const balance = parseFloat(snap.val());
-        if (balance < 5.1) {
-          document.getElementById("message").innerText = "❌ Insufficient balance to trade (min ₹5.1 required)";
-          return;
-        }
+    function renderChart() {
+      db.ref("market/chart").once("value", snap => {
+        const candles = [];
+        const annotations = [];
+        snap.forEach(child => {
+          const c = child.val();
+          candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
+        });
 
-        const id = Date.now().toString();
-        const trade = {
-          qty,
-          entry,
-          type,
-          status: "open",
-          timestamp: Date.now()
-        };
-        db.ref("users/" + currentUser + "/trades/" + id).set(trade);
-        document.getElementById("message").innerText = "✅ Trade placed successfully.";
-        loadTrades();
+        tradesRef.once("value", snap => {
+          const trades = snap.val() || {};
+          for (let key in trades) {
+            const t = trades[key];
+            if (t.status === "open") {
+              annotations.push(
+                { y: t.entry, borderColor: '#00f', label: { text: `Entry ₹${t.entry}`, style: { color: '#fff', background: '#00f' } } },
+                { y: t.tp, borderColor: '#0f0', label: { text: `TP ₹${t.tp}`, style: { color: '#fff', background: '#0f0' } } },
+                { y: t.sl, borderColor: '#f00', label: { text: `SL ₹${t.sl}`, style: { color: '#fff', background: '#f00' } } }
+              );
+            }
+          }
+
+          const chartOptions = {
+            chart: {
+              type: 'candlestick',
+              height: 400,
+              animations: { enabled: false },
+              toolbar: { show: true, autoSelected: 'pan' },
+              zoom: { enabled: true, type: 'xy' },
+              pan: { enabled: true, type: 'xy', free: true },
+              foreColor: '#fff'
+            },
+            series: [{ data: candles }],
+            xaxis: { type: 'category', labels: { show: false } },
+            yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
+            annotations: { yaxis: annotations }
+          };
+
+          const chartDiv = document.getElementById("chart");
+          chartDiv.innerHTML = "";
+          const chart = new ApexCharts(chartDiv, chartOptions);
+          chart.render();
+        });
       });
     }
 
-    function loadTrades() {
-      db.ref("users/" + currentUser + "/trades").on("value", snap => {
-        const trades = snap.val();
-        const container = document.getElementById("history");
-        container.innerHTML = "";
-        if (!trades) {
-          container.innerHTML = "No trades yet.";
-          return;
-        }
-        for (let id in trades) {
-          const t = trades[id];
-          const div = document.createElement("div");
-          div.className = "card";
-          div.innerHTML = `
-            <b>${t.type.toUpperCase()}</b> | Qty: ${t.qty} | Entry: ₹${t.entry} <br>
-            Status: ${t.status} ${t.pnl !== undefined ? `| PNL: ₹${parseFloat(t.pnl).toFixed(2)}` : ""}
-          `;
-          container.appendChild(div);
-        }
-      });
-    }
+    renderChart();
   </script>
 </body>
 </html>
