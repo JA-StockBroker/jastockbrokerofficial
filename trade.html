@@ -159,11 +159,13 @@
 
           let close = false;
           let pnl = 0;
+          // Check for TP hit
           if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) {
             close = true;
             pnl = (t.type === 'buy' ? (t.tp - t.entry) : (t.entry - t.tp)) * t.qty;
           }
-          if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) {
+          // Check for SL hit
+          else if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) {
             close = true;
             pnl = (t.type === 'buy' ? (t.sl - t.entry) : (t.entry - t.sl)) * t.qty;
           }
@@ -248,7 +250,6 @@
   </script>
 </body>
 </html>
-
 
 
 
