@@ -139,7 +139,7 @@
       alert("Withdrawal request sent ✅");
     }
 
-       function updateOpenTrades() {
+      function updateOpenTrades() {
       tradesRef.once("value", snap => {
         const data = snap.val() || {};
         const openBox = document.getElementById("openTrades");
@@ -153,42 +153,87 @@
           if (t.status === "closed") {
             total++;
             if (t.pnl > 0) wins++; else losses++;
-            histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)}</div>`;
+            histBox.innerHTML += `<div class='trade-card'>${t.type.toUpperCase()} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)} (${t.pnl > 0 ? 'Profit' : 'Loss'})</div>`;
             continue;
           }
 
           let close = false;
           let pnl = 0;
+          let exitPrice = currentPrice;
           
-          // Check for TP hit (profit scenario)
-          if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) {
-            close = true;
-            pnl = Math.abs((t.type === 'buy' ? (t.tp - t.entry) : (t.entry - t.tp))) * t.qty;
+          // For BUY trades
+          if (t.type === 'buy') {
+            if (currentPrice >= t.tp) { // TP hit (profit)
+              close = true;
+              exitPrice = t.tp;
+              pnl = (t.tp - t.entry) * t.qty;
+            } 
+            else if (currentPrice <= t.sl) { // SL hit (loss)
+              close = true;
+              exitPrice = t.sl;
+              pnl = (t.sl - t.entry) * t.qty; // This will be negative
+            }
           }
-          // Check for SL hit (loss scenario)
-          else if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) {
-            close = true;
-            pnl = -Math.abs((t.type === 'buy' ? (t.sl - t.entry) : (t.entry - t.sl))) * t.qty;
+          // For SELL trades
+          else if (t.type === 'sell') {
+            if (currentPrice <= t.tp) { // TP hit (profit)
+              close = true;
+              exitPrice = t.tp;
+              pnl = (t.entry - t.tp) * t.qty;
+            } 
+            else if (currentPrice >= t.sl) { // SL hit (loss)
+              close = true;
+              exitPrice = t.sl;
+              pnl = (t.entry - t.sl) * t.qty; // This will be negative
+            }
           }
 
           if (close) {
             tradesRef.child(key).update({ 
-              status: "closed", 
-              pnl,
-              exitPrice: currentPrice,
-              exitTime: Date.now() 
+              status: "closed",
+              exitPrice,
+              exitTime: Date.now(),
+              pnl: parseFloat(pnl.toFixed(2))
             });
-            userRef.child("balance").set(balance + pnl);
+            userRef.child("balance").transaction(currentBalance => {
+              return (currentBalance || 0) + pnl;
+            });
             continue;
           }
 
-          const currentPnl = ((t.type === 'buy' ? currentPrice - t.entry : t.entry - currentPrice) * t.qty).toFixed(2);
-          openBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>Live P&L: ₹${currentPnl}<br><button onclick="manualClose('${key}', ${currentPnl})">❌ Close</button></div>`;
+          // Calculate live P&L for open trades
+          const livePnl = parseFloat((
+            t.type === 'buy' 
+              ? (currentPrice - t.entry) * t.qty 
+              : (t.entry - currentPrice) * t.qty
+          ).toFixed(2));
+          
+          openBox.innerHTML += `
+            <div class='trade-card'>
+              ${t.type.toUpperCase()} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>
+              TP: ${t.tp} | SL: ${t.sl}<br>
+              Live P&L: ₹${livePnl}<br>
+              <button onclick="manualClose('${key}', ${livePnl})">❌ Close</button>
+            </div>`;
         }
+        
         document.getElementById("totalTrades").innerText = total;
         document.getElementById("wins").innerText = wins;
         document.getElementById("losses").innerText = losses;
       });
+    }
+
+    function manualClose(key, pnl) {
+      tradesRef.child(key).update({
+        status: "closed",
+        exitPrice: currentPrice,
+        exitTime: Date.now(),
+        pnl: parseFloat(pnl.toFixed(2))
+      });
+      userRef.child("balance").transaction(currentBalance => {
+        return (currentBalance || 0) + parseFloat(pnl);
+      });
+      alert(`Trade closed with P&L: ₹${pnl}`);
     }
 
 
@@ -251,6 +296,7 @@
   </script>
 </body>
 </html>
+
 
 
 
