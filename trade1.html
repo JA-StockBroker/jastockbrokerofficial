@@ -1,3 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JA Trader Panel</title>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    input, button { padding: 6px 10px; margin: 5px; }
+    #chart { background: white; border-radius: 10px; margin-top: 20px; }
+    .section { margin-top: 30px; }
+    .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    .logout-btn { float: right; margin-top: -35px; }
+    .chart-toolbar { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Welcome, <span id="usernameDisplay"></span></h1>
+  <button class="logout-btn" onclick="logout()">Logout</button>
+
+  <p>Market Status: <span id="marketStatus">Checking...</span> | Live Price: ₹<span id="livePrice">--</span></p>
+  <p>Balance: ₹<span id="balanceDisplay">--</span></p>
+
+  <div>
+    <label>Qty:</label><input type="number" id="qty" value="1" min="1">
+    <label>TP:</label><input type="number" id="tp">
+    <label>SL:</label><input type="number" id="sl">
+    <button onclick="placeTrade('buy')">Buy</button>
+    <button onclick="placeTrade('sell')">Sell</button>
+  </div>
+
+  <div class="section">
+    <h2>Withdraw Funds</h2>
+    <input id="withdrawAmt" type="number" placeholder="Amount">
+    <input id="withdrawPhone" placeholder="WhatsApp Number">
+    <button onclick="requestWithdrawal()">Request Withdrawal</button>
+    <p style="color:orange">⚠️ 2% withdrawal fee applies. Process in 2 business days.</p>
+  </div>
+
+  <div class="chart-toolbar">
+    <button onclick="renderChart()">🔄 Reset Zoom</button>
+  </div>
+  <div id="chart" style="height: 400px;"></div>
+
+  <div class="section">
+    <h2>Open Trades</h2>
+    <div id="openTrades"></div>
+  </div>
+
+  <div class="section">
+    <h2>Withdrawals</h2>
+    <div id="withdrawals"></div>
+  </div>
+
+  <div class="section">
+    <h2>Trade History</h2>
+    <div id="tradeHistory"></div>
+  </div>
+
+  <div class="section">
+    <h2>Performance Summary</h2>
+    <p>Total Trades: <span id="totalTrades">0</span> | Wins: <span id="wins">0</span> | Losses: <span id="losses">0</span></p>
+  </div>
+
 <script>
   const config = {
     apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
@@ -228,6 +295,11 @@
 
   renderChart();
 </script>
+
+
+</body>
+
+</html>
 
 
 
