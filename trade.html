@@ -1,22 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JA Trader Panel</title>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
-    body { background: #0f172a; color: white; font-family: Arial, sans-serif; padding: 20px; }
+    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
     input, button { padding: 6px 10px; margin: 5px; }
-    #chart { background: #1e293b; border-radius: 10px; margin-top: 20px; overflow: auto; }
+    #chart { background: white; border-radius: 10px; margin-top: 20px; }
     .section { margin-top: 30px; }
     .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .logout-btn { float: right; margin-top: -35px; }
     .chart-toolbar { margin-top: 10px; }
-    button { background: #22c55e; border: none; color: white; border-radius: 5px; cursor: pointer; }
-    button:hover { opacity: 0.9; }
   </style>
 </head>
 <body>
@@ -44,7 +42,6 @@
 
   <div class="chart-toolbar">
     <button onclick="renderChart()">🔄 Reset Zoom</button>
-    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
   </div>
   <div id="chart" style="height: 400px;"></div>
 
@@ -69,15 +66,15 @@
   </div>
 
   <script>
- const firebaseConfig = {
-    apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
-    authDomain: "brokerja-74512.firebaseapp.com",
-    databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "brokerja-74512",
-    storageBucket: "brokerja-74512.firebasestorage.app",
-    messagingSenderId: "1048821297447",
-    appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
-  };
+    const config = {
+      apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
+      authDomain: "brokerja-74512.firebaseapp.com",
+      databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "brokerja-74512",
+      storageBucket: "brokerja-74512.appspot.com",
+      messagingSenderId: "1048821297447",
+      appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
+    };
     firebase.initializeApp(config);
     const db = firebase.database();
 
@@ -88,8 +85,10 @@
     const userRef = db.ref("users/" + user);
     const priceRef = db.ref("market/currentPrice");
     const marketRef = db.ref("market/isOpen");
-    const tradesRef = userRef.child("trades");
-    let balance = 0, currentPrice = 1;
+    const tradesRef = db.ref("users/" + user + "/trades");
+    let balance = 0;
+    let currentPrice = 1;
+    let chart;
 
     priceRef.on("value", snap => {
       currentPrice = parseFloat(snap.val() || 1);
@@ -109,7 +108,7 @@
     function placeTrade(type) {
       marketRef.once("value", snap => {
         if (!snap.val()) return alert("Market is closed");
-        if (balance < 1) return alert("Insufficient balance to trade.");
+        if (balance < 5) return alert("Insufficient balance to trade.");
 
         const qty = parseInt(document.getElementById("qty").value);
         const tp = parseFloat(document.getElementById("tp").value);
@@ -136,7 +135,7 @@
       const phone = document.getElementById("withdrawPhone").value;
       if (!amount || !phone) return alert("Fill all fields");
       db.ref("users/" + user + "/withdrawalRequests").push({ amount, phone, status: "pending", time: Date.now() });
-      alert("Withdrawal request sent ✅");
+      alert("Withdrawal will be processed in 2 business days ✅");
     }
 
     function updateOpenTrades() {
@@ -183,19 +182,11 @@
       alert("Trade closed manually ✅");
     }
 
-    function toggleFullscreen() {
-      const chart = document.getElementById("chart");
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        chart.requestFullscreen();
-      }
-    }
-
     function renderChart() {
       db.ref("market/chart").once("value", snap => {
         const candles = [];
         const annotations = [];
+
         snap.forEach(child => {
           const c = child.val();
           candles.push({ x: new Date(c.timestamp), y: [c.open, c.high, c.low, c.close] });
@@ -219,20 +210,21 @@
               type: 'candlestick',
               height: 400,
               animations: { enabled: false },
-              toolbar: { show: true, autoSelected: 'pan' },
-              zoom: { enabled: true, type: 'xy' },
-              pan: { enabled: true, type: 'xy', free: true },
-              foreColor: '#fff'
+              toolbar: { autoSelected: 'pan', show: true },
+              zoom: { enabled: true }
             },
             series: [{ data: candles }],
-            xaxis: { type: 'category', labels: { show: false } },
-            yaxis: { labels: { formatter: v => '₹' + v.toFixed(2) } },
+            xaxis: {
+              type: 'category',
+              labels: { show: false }
+            },
+            yaxis: { labels: { formatter: val => '₹' + val.toFixed(2) } },
             annotations: { yaxis: annotations }
           };
 
-          const chartDiv = document.getElementById("chart");
+          const chartDiv = document.querySelector("#chart");
           chartDiv.innerHTML = "";
-          const chart = new ApexCharts(chartDiv, chartOptions);
+          chart = new ApexCharts(chartDiv, chartOptions);
           chart.render();
         });
       });
@@ -242,9 +234,6 @@
   </script>
 </body>
 </html>
-
-
-
 
 
 
