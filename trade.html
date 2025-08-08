@@ -68,26 +68,21 @@
     <p>Total Trades: <span id="totalTrades">0</span> | Wins: <span id="wins">0</span> | Losses: <span id="losses">0</span></p>
   </div>
 
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
-    authDomain: "brokerja-74512.firebaseapp.com",
-    databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "brokerja-74512",
-    storageBucket: "brokerja-74512.firebasestorage.app",
-    messagingSenderId: "1048821297447",
-    appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-    const db = firebase.database();
-
+const firebaseConfig = {
+  apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
+  authDomain: "brokerja-74512.firebaseapp.com",
+  databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "brokerja-74512",
+  storageBucket: "brokerja-74512.firebasestorage.app",
+  messagingSenderId: "1048821297447",
+  appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+    
     const user = sessionStorage.getItem("username");
     if (!user) location.href = "login.html";
     document.getElementById("usernameDisplay").innerText = user;
@@ -249,6 +244,7 @@
   </script>
 </body>
 </html>
+
 
 
 
