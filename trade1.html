@@ -198,13 +198,14 @@
 
     chartRef.on("value", snap => {
       const data = snap.val() || {};
-      const candles = Object.values(data).map(c => ({
-        x: c.timestamp, // timestamp already in ms
+      const keys = Object.keys(data).sort();
+      const candles = keys.map((k, i) => ({
+        x: i, // sequential position instead of real timestamp
         y: [
-          parseFloat(c.open),
-          parseFloat(c.high),
-          parseFloat(c.low),
-          parseFloat(c.close)
+          parseFloat(data[k].open),
+          parseFloat(data[k].high),
+          parseFloat(data[k].low),
+          parseFloat(data[k].close)
         ]
       }));
 
@@ -218,12 +219,20 @@
         },
         series: [{ data: candles }],
         xaxis: {
-          type: 'datetime',
-          labels: { show: true }
+          type: 'category',
+          labels: { show: false } // hide bottom time axis like admin
         },
         yaxis: {
           labels: {
             formatter: val => '₹' + val.toFixed(2)
+          }
+        },
+        plotOptions: {
+          candlestick: {
+            colors: {
+              upward: '#00B746',
+              downward: '#EF403C'
+            }
           }
         }
       };
@@ -242,6 +251,7 @@
 </body>
 
 </html>
+
 
 
 
