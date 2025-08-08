@@ -26,7 +26,7 @@
   <input type="number" id="qty" placeholder="Qty" value="1" min="1">
   <button onclick="simulateCandle('buy')">⬆ Buy</button>
   <button onclick="simulateCandle('sell')">⬇ Sell</button>
-
+   <div id="liveTime" style="font-weight:bold; margin-top:10px;"></div>
   <div id="chart"></div>
 
   <div class="section">
@@ -100,6 +100,15 @@
       priceRef.set(1);
       alert("Chart Reset 🔄");
     }
+
+    // Live clock
+  function updateClock() {
+    const now = new Date();
+    document.getElementById("liveTime").innerText =
+      now.toLocaleTimeString("en-IN", { hour12: false });
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
 
   
     function addUser() {
@@ -199,6 +208,7 @@
   </script>
 </body>
 </html>
+
 
 
 
