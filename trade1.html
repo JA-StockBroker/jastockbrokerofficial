@@ -42,6 +42,9 @@
 
   <div class="chart-toolbar">
     <button onclick="renderChart()">🔄 Reset Zoom</button>
+    <button onclick="toggleFullScreen()">📈 Fullscreen Chart</button>
+<div id="liveTime" style="font-weight:bold; margin-top:10px;"></div>
+
   </div>
   <div id="chart" style="height: 400px;"></div>
 
@@ -86,28 +89,36 @@
   const priceRef = db.ref("market/currentPrice");
   const marketRef = db.ref("market/isOpen");
   const tradesRef = db.ref("users/" + user + "/trades");
+  const candlesRef = db.ref("market/chart");
+
   let balance = 0;
   let currentPrice = 1;
+  let chart;
+  let candles = [];
+  let annotations = [];
 
-  // Live price updates
+  // Live clock
+  setInterval(() => {
+    const now = new Date();
+    document.getElementById("liveTime").innerText =
+      now.toLocaleDateString() + " " + now.toLocaleTimeString();
+  }, 1000);
+
   priceRef.on("value", snap => {
     currentPrice = parseFloat(snap.val() || 1);
     document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
     updateOpenTrades();
   });
 
-  // Market status
   marketRef.on("value", snap => {
     document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
   });
 
-  // Balance
   userRef.child("balance").on("value", snap => {
     balance = parseFloat(snap.val() || 0);
     document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
   });
 
-  // Place trade
   function placeTrade(type) {
     marketRef.once("value", snap => {
       if (!snap.val()) return alert("Market is closed");
@@ -124,17 +135,22 @@
       const trade = { type, qty, entry, tp, sl, status: "open", time: Date.now() };
       tradesRef.push(trade);
       userRef.child("balance").set(balance - 1);
+
+      // Add chart annotations for entry/TP/SL
+      annotations.push({ y: entry, borderColor: "#00E396", label: { text: "Entry" } });
+      if (tp) annotations.push({ y: tp, borderColor: "#FEB019", label: { text: "TP" } });
+      if (sl) annotations.push({ y: sl, borderColor: "#FF4560", label: { text: "SL" } });
+
+      renderChart();
       alert("Trade placed ✅");
     });
   }
 
-  // Logout
   function logout() {
     sessionStorage.clear();
     location.href = "login.html";
   }
 
-  // Withdrawal
   function requestWithdrawal() {
     const amount = parseFloat(document.getElementById("withdrawAmt").value);
     const phone = document.getElementById("withdrawPhone").value;
@@ -143,7 +159,6 @@
     alert("Withdrawal will be processed in 2 business days ✅");
   }
 
-  // Update open trades
   function updateOpenTrades() {
     tradesRef.once("value", snap => {
       const data = snap.val() || {};
@@ -196,110 +211,85 @@
     alert("Trade closed manually ✅");
   }
 
-  // Chart rendering with TP/SL/Entry lines
-  function renderChart() {
-    const chartRef = db.ref("market/chart");
+  // Listen for candle updates
+  candlesRef.on("value", snap => {
+    const val = snap.val() || {};
+    let allCandles = Object.values(val).map(c => ({
+      x: new Date(c.timestamp),
+      y: [c.open, c.high, c.low, c.close]
+    }));
 
-    chartRef.on("value", snap => {
-      const data = snap.val() || {};
-      const keys = Object.keys(data).sort();
-      const candles = keys.map((k, i) => ({
-        x: i, // sequential index instead of timestamp
-        y: [
-          parseFloat(data[k].open),
-          parseFloat(data[k].high),
-          parseFloat(data[k].low),
-          parseFloat(data[k].close)
-        ]
-      }));
+    // Keep last 50 candles
+    const maxVisible = 50;
+    candles = allCandles.slice(-maxVisible);
 
-      tradesRef.once("value", tradeSnap => {
-        const trades = tradeSnap.val() || {};
-        const annotations = [];
+    renderChart(true); // auto-scroll to latest
+  });
 
-        for (let key in trades) {
-          const t = trades[key];
-          if (t.status !== "open") continue;
-
-          // Entry line
-          annotations.push({
-            y: t.entry,
-            borderColor: '#007bff',
-            label: {
-              borderColor: '#007bff',
-              style: { color: '#fff', background: '#007bff' },
-              text: `Entry ₹${t.entry}`
-            }
-          });
-
-          // TP line
-          if (t.tp) {
-            annotations.push({
-              y: t.tp,
-              borderColor: '#28a745',
-              label: {
-                borderColor: '#28a745',
-                style: { color: '#fff', background: '#28a745' },
-                text: `TP ₹${t.tp}`
-              }
-            });
+  // Render chart
+  function renderChart(autoScroll = false) {
+    const chartOptions = {
+      chart: {
+        type: 'candlestick',
+        height: '100%',
+        width: '100%',
+        animations: { enabled: false },
+        toolbar: {
+          show: true,
+          tools: {
+            download: true,
+            selection: true,
+            zoom: true,
+            zoomin: true,
+            zoomout: true,
+            pan: true,
+            reset: true
           }
-
-          // SL line
-          if (t.sl) {
-            annotations.push({
-              y: t.sl,
-              borderColor: '#dc3545',
-              label: {
-                borderColor: '#dc3545',
-                style: { color: '#fff', background: '#dc3545' },
-                text: `SL ₹${t.sl}`
-              }
-            });
-          }
+        },
+        zoom: { enabled: true, type: 'xy' }
+      },
+      series: [{ data: candles }],
+      xaxis: {
+        type: 'datetime',
+        labels: { datetimeUTC: false }
+      },
+      yaxis: {
+        labels: {
+          formatter: val => '₹' + val.toFixed(2)
         }
+      },
+      annotations: { yaxis: annotations }
+    };
 
-        const chartOptions = {
-          chart: {
-            type: 'candlestick',
-            height: 400,
-            animations: { enabled: false },
-            toolbar: { autoSelected: 'pan', show: true },
-            zoom: { enabled: true }
-          },
-          series: [{ data: candles }],
-          xaxis: {
-            type: 'category',
-            labels: { show: false }
-          },
-          yaxis: {
-            labels: {
-              formatter: val => '₹' + val.toFixed(2)
-            }
-          },
-          plotOptions: {
-            candlestick: {
-              colors: { upward: '#00B746', downward: '#EF403C' }
-            }
-          },
-          annotations: { yaxis: annotations }
-        };
-
-        const chartDiv = document.querySelector("#chart");
-        chartDiv.innerHTML = "";
-        const chart = new ApexCharts(chartDiv, chartOptions);
-        chart.render();
-      });
+    const chartDiv = document.querySelector("#chart");
+    chartDiv.innerHTML = "";
+    chart = new ApexCharts(chartDiv, chartOptions);
+    chart.render().then(() => {
+      if (autoScroll) {
+        chart.zoomX(
+          candles[candles.length - 1].x.getTime() - 1000 * 60 * 15,
+          candles[candles.length - 1].x.getTime()
+        );
+      }
     });
   }
 
-  renderChart();
+  // Fullscreen button
+  function toggleFullScreen() {
+    const chartElem = document.querySelector("#chart");
+    if (!document.fullscreenElement) {
+      chartElem.requestFullscreen().catch(err => alert(err));
+    } else {
+      document.exitFullscreen();
+    }
+  }
 </script>
 
 
 </body>
 
 </html>
+
 
 
 
