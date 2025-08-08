@@ -86,6 +86,7 @@
 
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
+    const db = firebase.database();
 
     const user = sessionStorage.getItem("username");
     if (!user) location.href = "login.html";
@@ -248,6 +249,7 @@
   </script>
 </body>
 </html>
+
 
 
 
