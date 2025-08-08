@@ -1,70 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JA Trader Panel</title>
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-  <style>
-    body { background: #111822; color: white; font-family: Arial, sans-serif; padding: 20px; }
-    input, button { padding: 6px 10px; margin: 5px; }
-    #chart { background: white; border-radius: 10px; margin-top: 20px; }
-    .section { margin-top: 30px; }
-    .trade-card { background: #1f2937; padding: 10px; margin: 10px 0; border-radius: 8px; }
-    .logout-btn { float: right; margin-top: -35px; }
-    .chart-toolbar { margin-top: 10px; }
-  </style>
-</head>
-<body>
-  <h1>Welcome, <span id="usernameDisplay"></span></h1>
-  <button class="logout-btn" onclick="logout()">Logout</button>
-
-  <p>Market Status: <span id="marketStatus">Checking...</span> | Live Price: ₹<span id="livePrice">--</span></p>
-  <p>Balance: ₹<span id="balanceDisplay">--</span></p>
-
-  <div>
-    <label>Qty:</label><input type="number" id="qty" value="1" min="1">
-    <label>TP:</label><input type="number" id="tp">
-    <label>SL:</label><input type="number" id="sl">
-    <button onclick="placeTrade('buy')">Buy</button>
-    <button onclick="placeTrade('sell')">Sell</button>
-  </div>
-
-  <div class="section">
-    <h2>Withdraw Funds</h2>
-    <input id="withdrawAmt" type="number" placeholder="Amount">
-    <input id="withdrawPhone" placeholder="WhatsApp Number">
-    <button onclick="requestWithdrawal()">Request Withdrawal</button>
-    <p style="color:orange">⚠️ 2% withdrawal fee applies. Process in 2 business days.</p>
-  </div>
-
-  <div class="chart-toolbar">
-    <button onclick="renderChart()">🔄 Reset Zoom</button>
-  </div>
-  <div id="chart" style="height: 400px;"></div>
-
-  <div class="section">
-    <h2>Open Trades</h2>
-    <div id="openTrades"></div>
-  </div>
-
-  <div class="section">
-    <h2>Withdrawals</h2>
-    <div id="withdrawals"></div>
-  </div>
-
-  <div class="section">
-    <h2>Trade History</h2>
-    <div id="tradeHistory"></div>
-  </div>
-
-  <div class="section">
-    <h2>Performance Summary</h2>
-    <p>Total Trades: <span id="totalTrades">0</span> | Wins: <span id="wins">0</span> | Losses: <span id="losses">0</span></p>
-  </div>
-
 <script>
   const config = {
     apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
@@ -89,21 +22,25 @@
   let balance = 0;
   let currentPrice = 1;
 
+  // Live price updates
   priceRef.on("value", snap => {
     currentPrice = parseFloat(snap.val() || 1);
     document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
     updateOpenTrades();
   });
 
+  // Market status
   marketRef.on("value", snap => {
     document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
   });
 
+  // Balance
   userRef.child("balance").on("value", snap => {
     balance = parseFloat(snap.val() || 0);
     document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
   });
 
+  // Place trade
   function placeTrade(type) {
     marketRef.once("value", snap => {
       if (!snap.val()) return alert("Market is closed");
@@ -124,11 +61,13 @@
     });
   }
 
+  // Logout
   function logout() {
     sessionStorage.clear();
     location.href = "login.html";
   }
 
+  // Withdrawal
   function requestWithdrawal() {
     const amount = parseFloat(document.getElementById("withdrawAmt").value);
     const phone = document.getElementById("withdrawPhone").value;
@@ -137,6 +76,7 @@
     alert("Withdrawal will be processed in 2 business days ✅");
   }
 
+  // Update open trades
   function updateOpenTrades() {
     tradesRef.once("value", snap => {
       const data = snap.val() || {};
@@ -151,12 +91,7 @@
         if (t.status === "closed") {
           total++;
           if (t.pnl > 0) wins++; else losses++;
-          histBox.innerHTML += `
-            <div class='trade-card'>
-              ${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>
-              TP: ${t.tp} | SL: ${t.sl}<br>
-              P&L: ₹${t.pnl?.toFixed(2)}
-            </div>`;
+          histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)}</div>`;
           continue;
         }
 
@@ -179,7 +114,8 @@
             TP: ${t.tp} | SL: ${t.sl}<br>
             Live P&L: ₹${pnl}<br>
             <button onclick="manualClose('${key}', ${pnl})">❌ Close</button>
-          </div>`;
+          </div>
+        `;
       }
       document.getElementById("totalTrades").innerText = total;
       document.getElementById("wins").innerText = wins;
@@ -193,6 +129,7 @@
     alert("Trade closed manually ✅");
   }
 
+  // Chart rendering with TP/SL/Entry lines
   function renderChart() {
     const chartRef = db.ref("market/chart");
 
@@ -200,7 +137,7 @@
       const data = snap.val() || {};
       const keys = Object.keys(data).sort();
       const candles = keys.map((k, i) => ({
-        x: i, // sequential position instead of real timestamp
+        x: i, // sequential index instead of timestamp
         y: [
           parseFloat(data[k].open),
           parseFloat(data[k].high),
@@ -209,48 +146,88 @@
         ]
       }));
 
-      const chartOptions = {
-        chart: {
-          type: 'candlestick',
-          height: 400,
-          animations: { enabled: false },
-          toolbar: { autoSelected: 'pan', show: true },
-          zoom: { enabled: true }
-        },
-        series: [{ data: candles }],
-        xaxis: {
-          type: 'category',
-          labels: { show: false } // hide bottom time axis like admin
-        },
-        yaxis: {
-          labels: {
-            formatter: val => '₹' + val.toFixed(2)
-          }
-        },
-        plotOptions: {
-          candlestick: {
-            colors: {
-              upward: '#00B746',
-              downward: '#EF403C'
+      tradesRef.once("value", tradeSnap => {
+        const trades = tradeSnap.val() || {};
+        const annotations = [];
+
+        for (let key in trades) {
+          const t = trades[key];
+          if (t.status !== "open") continue;
+
+          // Entry line
+          annotations.push({
+            y: t.entry,
+            borderColor: '#007bff',
+            label: {
+              borderColor: '#007bff',
+              style: { color: '#fff', background: '#007bff' },
+              text: `Entry ₹${t.entry}`
             }
+          });
+
+          // TP line
+          if (t.tp) {
+            annotations.push({
+              y: t.tp,
+              borderColor: '#28a745',
+              label: {
+                borderColor: '#28a745',
+                style: { color: '#fff', background: '#28a745' },
+                text: `TP ₹${t.tp}`
+              }
+            });
+          }
+
+          // SL line
+          if (t.sl) {
+            annotations.push({
+              y: t.sl,
+              borderColor: '#dc3545',
+              label: {
+                borderColor: '#dc3545',
+                style: { color: '#fff', background: '#dc3545' },
+                text: `SL ₹${t.sl}`
+              }
+            });
           }
         }
-      };
 
-      const chartDiv = document.querySelector("#chart");
-      chartDiv.innerHTML = "";
-      const chart = new ApexCharts(chartDiv, chartOptions);
-      chart.render();
+        const chartOptions = {
+          chart: {
+            type: 'candlestick',
+            height: 400,
+            animations: { enabled: false },
+            toolbar: { autoSelected: 'pan', show: true },
+            zoom: { enabled: true }
+          },
+          series: [{ data: candles }],
+          xaxis: {
+            type: 'category',
+            labels: { show: false }
+          },
+          yaxis: {
+            labels: {
+              formatter: val => '₹' + val.toFixed(2)
+            }
+          },
+          plotOptions: {
+            candlestick: {
+              colors: { upward: '#00B746', downward: '#EF403C' }
+            }
+          },
+          annotations: { yaxis: annotations }
+        };
+
+        const chartDiv = document.querySelector("#chart");
+        chartDiv.innerHTML = "";
+        const chart = new ApexCharts(chartDiv, chartOptions);
+        chart.render();
+      });
     });
   }
 
   renderChart();
 </script>
-
-
-</body>
-
-</html>
 
 
 
