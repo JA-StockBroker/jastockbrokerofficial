@@ -86,10 +86,10 @@
     const priceRef = db.ref("market/currentPrice");
     const marketRef = db.ref("market/isOpen");
     const tradesRef = db.ref("users/" + user + "/trades");
+
     let balance = 0;
     let currentPrice = 1;
-
-    // Candlestick data placeholders
+    let chart;
     let candles = [];
     let annotations = [];
 
@@ -160,7 +160,8 @@
                             ${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>
                             TP: ${t.tp} | SL: ${t.sl}<br>
                             P&L: ₹${t.pnl?.toFixed(2)}
-                        </div>`;
+                        </div>
+                    `;
                     continue;
                 }
 
@@ -209,8 +210,16 @@
             },
             series: [{ data: candles }],
             xaxis: {
-                type: 'category',
-                labels: { show: false }
+                type: 'datetime', // ✅ proper candle scaling
+                labels: {
+                    datetimeUTC: false,
+                    datetimeFormatter: {
+                        year: 'yyyy',
+                        month: "MMM 'yy",
+                        day: 'dd MMM',
+                        hour: 'HH:mm'
+                    }
+                }
             },
             yaxis: {
                 labels: {
@@ -224,18 +233,9 @@
 
         const chartDiv = document.querySelector("#chart");
         chartDiv.innerHTML = "";
-        const chart = new ApexCharts(chartDiv, chartOptions);
+        chart = new ApexCharts(chartDiv, chartOptions);
         chart.render();
     }
-
-    // Load dummy candle data so chart renders
-    candles = [
-        { x: "2025-08-01", y: [100, 110, 95, 105] },
-        { x: "2025-08-02", y: [105, 115, 100, 112] }
-    ];
-    annotations = [
-        { y: 110, borderColor: '#00E396', label: { text: "Target" } }
-    ];
 
     renderChart();
 </script>
@@ -243,3 +243,4 @@
 </body>
 
 </html>
+
