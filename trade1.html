@@ -42,6 +42,7 @@
 
   <div class="chart-toolbar">
     <button onclick="renderChart()">🔄 Reset Zoom</button>
+    <div id="liveTime" style="font-weight:bold; margin-top:10px;"></div>
   </div>
   <div id="chart" style="height: 400px;"></div>
 
@@ -89,6 +90,15 @@
   let balance = 0;
   let currentPrice = 1;
 
+ // Live clock
+  function updateClock() {
+    const now = new Date();
+    document.getElementById("liveTime").innerText =
+      now.toLocaleTimeString("en-IN", { hour12: false });
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+  
   // Live price updates
   priceRef.on("value", snap => {
     currentPrice = parseFloat(snap.val() || 1);
@@ -300,6 +310,7 @@
 </body>
 
 </html>
+
 
 
 
