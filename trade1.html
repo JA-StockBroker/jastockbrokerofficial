@@ -90,22 +90,46 @@
     let balance = 0;
     let currentPrice = 1;
     let chart;
-    let candles = [];
-    let annotations = [];
+    let candles = []; // Store candle data
+    let annotations = []; // Store annotations if needed
 
+    // Price updates
     priceRef.on("value", snap => {
         currentPrice = parseFloat(snap.val() || 1);
         document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
         updateOpenTrades();
     });
 
+    // Market status
     marketRef.on("value", snap => {
         document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
     });
 
+    // Balance updates
     userRef.child("balance").on("value", snap => {
         balance = parseFloat(snap.val() || 0);
         document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
+    });
+
+    // Fetch candles from Firebase
+    db.ref("market/candles").on("value", snap => {
+        const data = snap.val() || {};
+        candles = [];
+
+        Object.keys(data).forEach(key => {
+            const c = data[key];
+            candles.push({
+                x: new Date(c.time).getTime(),
+                y: [
+                    parseFloat(c.open),
+                    parseFloat(c.high),
+                    parseFloat(c.low),
+                    parseFloat(c.close)
+                ]
+            });
+        });
+
+        renderChart(); // Refresh chart whenever new data arrives
     });
 
     function placeTrade(type) {
@@ -155,13 +179,7 @@
                 if (t.status === "closed") {
                     total++;
                     if (t.pnl > 0) wins++; else losses++;
-                    histBox.innerHTML += `
-                        <div class='trade-card'>
-                            ${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>
-                            TP: ${t.tp} | SL: ${t.sl}<br>
-                            P&L: ₹${t.pnl?.toFixed(2)}
-                        </div>
-                    `;
+                    histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)}</div>`;
                     continue;
                 }
 
@@ -179,12 +197,12 @@
                 const pnl = ((t.type === 'buy' ? currentPrice - t.entry : t.entry - currentPrice) * t.qty).toFixed(2);
 
                 openBox.innerHTML += `
-                    <div class="trade-card">
-                        ${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>
-                        TP: ${t.tp} | SL: ${t.sl}<br>
-                        Live P&L: ₹${pnl}<br>
-                        <button onclick="manualClose('${key}', ${pnl})">❌ Close</button>
-                    </div>
+                  <div class="trade-card">
+                    ${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>
+                    TP: ${t.tp} | SL: ${t.sl}<br>
+                    Live P&L: ₹${pnl}<br>
+                    <button onclick="manualClose('${key}', ${pnl})">❌ Close</button>
+                  </div>
                 `;
             }
             document.getElementById("totalTrades").innerText = total;
@@ -210,16 +228,8 @@
             },
             series: [{ data: candles }],
             xaxis: {
-                type: 'datetime', // ✅ proper candle scaling
-                labels: {
-                    datetimeUTC: false,
-                    datetimeFormatter: {
-                        year: 'yyyy',
-                        month: "MMM 'yy",
-                        day: 'dd MMM',
-                        hour: 'HH:mm'
-                    }
-                }
+                type: 'datetime',
+                labels: { show: true }
             },
             yaxis: {
                 labels: {
@@ -233,14 +243,14 @@
 
         const chartDiv = document.querySelector("#chart");
         chartDiv.innerHTML = "";
-        chart = new ApexCharts(chartDiv, chartOptions);
-        chart.render();
+        const chartInstance = new ApexCharts(chartDiv, chartOptions);
+        chartInstance.render();
     }
-
-    renderChart();
 </script>
+
 
 </body>
 
 </html>
+
 
