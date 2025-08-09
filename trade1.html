@@ -91,20 +91,20 @@
   let balance = 0;
   let currentPrice = 1;
 
- // Live clock
-function updateClock() {
+  // Live clock
+  function updateClock() {
     let now = new Date();
     let hours = now.getHours();
     let minutes = String(now.getMinutes()).padStart(2, '0');
     let seconds = String(now.getSeconds()).padStart(2, '0');
     let ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12; // convert to 12hr format
-    document.getElementById('clock').textContent = 
-        `${hours}:${minutes}:${seconds} ${ampm}`;
-}
-setInterval(updateClock, 1000);
-updateClock();
-  
+    hours = hours % 12 || 12;
+    document.getElementById('clock').textContent =
+      `${hours}:${minutes}:${seconds} ${ampm}`;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
   // Live price updates
   priceRef.on("value", snap => {
     currentPrice = parseFloat(snap.val() || 1);
@@ -212,67 +212,62 @@ updateClock();
     alert("Trade closed manually ✅");
   }
 
-let chart = null; // Store chart instance
+  let chart = null;
 
-function renderChart(categories, seriesData) {
+  function renderChart(categories, seriesData) {
     if (chart) {
-        chart.destroy();
+      chart.destroy();
     }
-
     var options = {
-        chart: {
-            type: 'line',
-            height: 350,
-            background: '#ffffff',
-            toolbar: { show: true }
+      chart: {
+        type: 'line',
+        height: 350,
+        background: '#ffffff',
+        toolbar: { show: true }
+      },
+      stroke: { curve: 'smooth', width: 2 },
+      series: [{ name: 'Price', data: seriesData }],
+      xaxis: {
+        categories: categories,
+        labels: { rotate: -45 }
+      },
+      yaxis: {
+        labels: {
+          formatter: function (val) {
+            return (val % 0.5 === 0 && val !== 0) ? val.toFixed(1) : '';
+          }
         },
-        stroke: { curve: 'smooth', width: 2 },
-        series: [{ name: 'Price', data: seriesData }],
-        xaxis: {
-            categories: categories,
-            labels: { rotate: -45 }
-        },
-        yaxis: {
-            labels: {
-                formatter: function (val) {
-                    return (val % 0.5 === 0 && val !== 0) ? val.toFixed(1) : '';
-                }
-            },
-            tickAmount: 5,
-            min: 2,
-            max: 4
-        },
-        tooltip: {
-            y: { formatter: val => val.toFixed(2) }
-        }
+        tickAmount: 5,
+        min: 2,
+        max: 4
+      },
+      tooltip: {
+        y: { formatter: val => val.toFixed(2) }
+      }
     };
-
     chart = new ApexCharts(document.querySelector("#chart"), options);
     chart.render();
-}
+  }
 
-// Listen for data from Firebase
-db.ref("market/chart").on("value", (snapshot) => {
+  // Listen for chart data from Firebase
+  db.ref("market/chart").on("value", (snapshot) => {
     let data = snapshot.val();
-    console.log("Chart Data from Firebase:", data); // 🔍 Debug log
-
     if (!data || !Array.isArray(data)) {
-        console.warn("No valid data for chart");
-        return;
+      console.warn("No valid data for chart");
+      return;
     }
-
     let categories = data.map(item => item.time);
     let seriesData = data.map(item => item.price);
-
     renderChart(categories, seriesData);
-});
+  });
 
-  renderChart();
- </script>
+</script>
+
 
 </body>
 
 </html>
+
 
 
 
