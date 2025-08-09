@@ -208,28 +208,35 @@
   }
 
   // Chart rendering with TP/SL/Entry lines
-function renderChart() {
-    const chartDiv = document.querySelector("#chart");
-    chartDiv.innerHTML = ""; 
+let chart = null; // Store chart instance
 
-    db.ref("market/chart").once("value", snap => {
-        const rawData = snap.val() || {};
+function renderChart() {
+    Promise.all([
+        db.ref("market/chart").once("value"),
+        tradesRef.once("value")
+    ]).then(([chartSnap, tradesSnap]) => {
+        const rawData = chartSnap.val() || {};
+        const trades = tradesSnap.val() || {};
+
         let candles = Object.values(rawData).map(c => ({
             time: new Date(c.timestamp),
             y: [c.open, c.high, c.low, c.close]
         }));
 
-        // Sort by time so candles are in correct order
+        // Sort candles by time
         candles.sort((a, b) => a.time - b.time);
 
-        // Convert time to readable format for category axis
         const categories = candles.map(c => c.time.toLocaleString());
 
         const chartOptions = {
             chart: {
                 type: 'candlestick',
                 height: 500,
-                toolbar: { show: true, tools: { pan: true, zoom: true, reset: true } },
+                toolbar: { 
+                    show: true, 
+                    tools: { pan: true, zoom: true, reset: true } 
+                },
+                zoom: { enabled: true, type: 'x', autoScaleYaxis: true },
                 animations: { enabled: false }
             },
             series: [{ data: candles.map(c => ({ x: c.time.toLocaleString(), y: c.y })) }],
@@ -238,45 +245,47 @@ function renderChart() {
                 categories: categories,
                 labels: { rotate: -45 }
             },
-            yaxis: {
-                tooltip: { enabled: true },
-                labels: { formatter: val => '₹' + val.toFixed(2) }
-            },
+            yaxis: { tooltip: { enabled: true } },
             annotations: { yaxis: [] }
         };
 
         // Add TP/SL/Entry lines
-        tradesRef.once("value", tradeSnap => {
-            const trades = tradeSnap.val() || {};
-            Object.values(trades).forEach(t => {
-                if (t.status === "open") {
+        Object.values(trades).forEach(t => {
+            if (t.status === "open") {
+                chartOptions.annotations.yaxis.push({
+                    y: t.entry,
+                    borderColor: '#00E396',
+                    label: { text: `Entry ₹${t.entry}` }
+                });
+                if (t.tp) {
                     chartOptions.annotations.yaxis.push({
-                        y: t.entry,
-                        borderColor: '#00E396',
-                        label: { text: `Entry ₹${t.entry}`, style: { background: '#00E396', color: '#fff' } }
+                        y: t.tp,
+                        borderColor: '#FEB019',
+                        label: { text: `TP ₹${t.tp}` }
                     });
-                    if (t.tp) {
-                        chartOptions.annotations.yaxis.push({
-                            y: t.tp,
-                            borderColor: '#FEB019',
-                            label: { text: `TP ₹${t.tp}`, style: { background: '#FEB019', color: '#fff' } }
-                        });
-                    }
-                    if (t.sl) {
-                        chartOptions.annotations.yaxis.push({
-                            y: t.sl,
-                            borderColor: '#FF4560',
-                            label: { text: `SL ₹${t.sl}`, style: { background: '#FF4560', color: '#fff' } }
-                        });
-                    }
                 }
-            });
-
-            const chart = new ApexCharts(chartDiv, chartOptions);
-            chart.render();
+                if (t.sl) {
+                    chartOptions.annotations.yaxis.push({
+                        y: t.sl,
+                        borderColor: '#FF4560',
+                        label: { text: `SL ₹${t.sl}` }
+                    });
+                }
+            }
         });
+
+        // Destroy previous chart if exists
+        if (chart) {
+            chart.destroy();
+        }
+
+        // Create new chart
+        chart = new ApexCharts(document.querySelector("#chart"), chartOptions);
+        chart.render();
     });
 }
+
+// Listen only once for changes
 db.ref("market/chart").on("value", renderChart);
 tradesRef.on("value", renderChart);
  </script>
@@ -284,6 +293,7 @@ tradesRef.on("value", renderChart);
 </body>
 
 </html>
+
 
 
 
