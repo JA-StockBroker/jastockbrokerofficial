@@ -68,7 +68,6 @@
   </div>
 
 <script>
-
   const config = {
     apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
     authDomain: "brokerja-74512.firebaseapp.com",
@@ -209,113 +208,85 @@
   }
 
   // Chart rendering with TP/SL/Entry lines
-let chart;
-let candleData = [];
-let tpLineSeries = [];
-let slLineSeries = [];
-let entryLineSeries = [];
+  function renderChart() {
+    const chartDiv = document.querySelector("#chart");
+    chartDiv.innerHTML = "";
 
-function renderChart() {
-    const options = {
-        chart: {
-            type: 'candlestick',
-            height: '100%',
-            width: '100%',
-            id: 'realtime',
-            animations: { enabled: false },
-            toolbar: { show: true, tools: { pan: true, zoom: true, reset: true } },
-            zoom: { enabled: true },
-            selection: { enabled: true }
-        },
-        series: [
-            { name: 'Candles', type: 'candlestick', data: candleData },
-            { name: 'TP', type: 'line', data: tpLineSeries, color: '#00FF00' },
-            { name: 'SL', type: 'line', data: slLineSeries, color: '#FF0000' },
-            { name: 'Entry', type: 'line', data: entryLineSeries, color: '#0000FF' }
-        ],
-        xaxis: {
-            type: 'datetime',
-            labels: { datetimeUTC: false },
-            tooltip: { enabled: false }
-        },
-        yaxis: {
-            tooltip: { enabled: true }
-        },
-        grid: {
-            borderColor: '#555',
-            strokeDashArray: 2
-        },
-        tooltip: { shared: true, custom: undefined }
-    };
+    // Always load candle data fresh from Firebase
+    db.ref("market/chart").once("value", snap => {
+        const rawData = snap.val() || {};
+        const candles = Object.values(rawData).map(c => ({
+            x: new Date(c.timestamp),
+            y: [c.open, c.high, c.low, c.close]
+        }));
 
-    if (!chart) {
-        chart = new ApexCharts(document.querySelector("#chart"), options);
-        chart.render();
-    } else {
-        chart.updateOptions(options, false, true);
-    }
-}
-
-function addCandle(candle) {
-    candleData.push({
-        x: new Date(candle.timestamp),
-        y: [candle.open, candle.high, candle.low, candle.close]
-    });
-
-    // Keep only last 200 candles for performance
-    if (candleData.length > 200) {
-        candleData.shift();
-    }
-
-    chart.updateSeries([
-        { name: 'Candles', type: 'candlestick', data: candleData },
-        { name: 'TP', type: 'line', data: tpLineSeries },
-        { name: 'SL', type: 'line', data: slLineSeries },
-        { name: 'Entry', type: 'line', data: entryLineSeries }
-    ]);
-
-    scrollToLatestCandle();
-}
-
-function setTradeLines(entry, tp, sl) {
-    entryLineSeries = [{ x: new Date(), y: entry }];
-    tpLineSeries = [{ x: new Date(), y: tp }];
-    slLineSeries = [{ x: new Date(), y: sl }];
-
-    // Make lines stretch across entire visible x-axis
-    if (candleData.length > 0) {
-        let firstX = candleData[0].x;
-        let lastX = candleData[candleData.length - 1].x;
-        entryLineSeries = [{ x: firstX, y: entry }, { x: lastX, y: entry }];
-        tpLineSeries = [{ x: firstX, y: tp }, { x: lastX, y: tp }];
-        slLineSeries = [{ x: firstX, y: sl }, { x: lastX, y: sl }];
-    }
-
-    chart.updateSeries([
-        { name: 'Candles', type: 'candlestick', data: candleData },
-        { name: 'TP', type: 'line', data: tpLineSeries },
-        { name: 'SL', type: 'line', data: slLineSeries },
-        { name: 'Entry', type: 'line', data: entryLineSeries }
-    ]);
-}
-
-function scrollToLatestCandle() {
-    if (candleData.length > 0) {
-        let lastX = candleData[candleData.length - 1].x;
-        chart.updateOptions({
+        // Create base chart options
+        const chartOptions = {
+            chart: {
+                type: 'candlestick',
+                height: '100%',
+                width: '100%',
+                animations: { enabled: false },
+                toolbar: { show: true, tools: { pan: true, zoom: true } },
+                zoom: { enabled: true }
+            },
+            series: [{ data: candles }],
             xaxis: {
-                min: lastX - 60000 * 30, // show last 30 min
-                max: lastX + 60000
-            }
+                type: 'datetime',
+                labels: { datetimeUTC: false }
+            },
+            yaxis: {
+                tooltip: { enabled: true },
+                labels: { formatter: val => '₹' + val.toFixed(2) }
+            },
+            annotations: { yaxis: [] } // will add lines later
+        };
+
+        // Add TP/SL/Entry lines only if trades exist
+        tradesRef.once("value", tradeSnap => {
+            const trades = tradeSnap.val() || {};
+            Object.values(trades).forEach(t => {
+                if (t.status === "open") {
+                    // Entry line
+                    chartOptions.annotations.yaxis.push({
+                        y: t.entry,
+                        borderColor: '#00E396',
+                        label: { text: `Entry ₹${t.entry}`, style: { background: '#00E396', color: '#fff' } }
+                    });
+                    // TP line
+                    if (t.tp) {
+                        chartOptions.annotations.yaxis.push({
+                            y: t.tp,
+                            borderColor: '#FEB019',
+                            label: { text: `TP ₹${t.tp}`, style: { background: '#FEB019', color: '#fff' } }
+                        });
+                    }
+                    // SL line
+                    if (t.sl) {
+                        chartOptions.annotations.yaxis.push({
+                            y: t.sl,
+                            borderColor: '#FF4560',
+                            label: { text: `SL ₹${t.sl}`, style: { background: '#FF4560', color: '#fff' } }
+                        });
+                    }
+                }
+            });
+
+            // Render chart safely
+            const chart = new ApexCharts(chartDiv, chartOptions);
+            chart.render();
         });
-    }
+    });
 }
 
-  renderChart();
-</script>
+    renderChart();
+
+ </script>
+
 </body>
 
 </html>
+
 
 
 
