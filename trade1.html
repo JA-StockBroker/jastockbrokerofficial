@@ -132,10 +132,13 @@
       if (!snap.val()) return alert("Market is closed");
       if (balance < 5) return alert("Insufficient balance to trade.");
 
-      const qty = parseInt(document.getElementById("qty").value);
+      const qty = parseFloat(document.getElementById("qty").value);
       const tp = parseFloat(document.getElementById("tp").value);
       const sl = parseFloat(document.getElementById("sl").value);
       const entry = currentPrice;
+
+      if (!Number.isFinite(qty) || qty <= 0) return alert("Invalid quantity");
+      if (!Number.isFinite(tp) || !Number.isFinite(sl)) return alert("Invalid TP/SL");
 
       if (type === 'buy' && (tp <= entry || sl >= entry)) return alert("Invalid TP/SL for Buy");
       if (type === 'sell' && (tp >= entry || sl <= entry)) return alert("Invalid TP/SL for Sell");
@@ -145,7 +148,6 @@
       userRef.child("balance").set(balance - 1);
       alert("Trade placed ✅");
 
-      // refresh chart so trader sees TP/SL/Entry
       renderChart();
     });
   }
@@ -302,13 +304,14 @@
   }
 
   renderChart();
-  tradesRef.on("child_added", renderChart); // auto-refresh chart when new trade added
+  tradesRef.on("child_added", renderChart);
 </script>
 
 
 </body>
 
 </html>
+
 
 
 
