@@ -91,16 +91,11 @@
   let balance = 0;
   let currentPrice = 1;
 
-  // Live clock
+  // Live clock in 12h format
   function updateClock() {
-    let now = new Date();
-    let hours = now.getHours();
-    let minutes = String(now.getMinutes()).padStart(2, '0');
-    let seconds = String(now.getSeconds()).padStart(2, '0');
-    let ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12;
-    document.getElementById('clock').textContent =
-      `${hours}:${minutes}:${seconds} ${ampm}`;
+    const now = new Date();
+    document.getElementById("liveTime").innerText =
+      now.toLocaleTimeString("en-IN", { hour12: true });
   }
   setInterval(updateClock, 1000);
   updateClock();
@@ -141,16 +136,17 @@
       tradesRef.push(trade);
       userRef.child("balance").set(balance - 1);
       alert("Trade placed ✅");
+
+      // refresh chart so trader sees TP/SL/Entry
+      renderChart();
     });
   }
 
-  // Logout
   function logout() {
     sessionStorage.clear();
     location.href = "login.html";
   }
 
-  // Withdrawal
   function requestWithdrawal() {
     const amount = parseFloat(document.getElementById("withdrawAmt").value);
     const phone = document.getElementById("withdrawPhone").value;
@@ -159,7 +155,6 @@
     alert("Withdrawal will be processed in 2 business days ✅");
   }
 
-  // Update open trades
   function updateOpenTrades() {
     tradesRef.once("value", snap => {
       const data = snap.val() || {};
@@ -212,61 +207,101 @@
     alert("Trade closed manually ✅");
   }
 
-  let chart = null;
+  function renderChart() {
+    const chartRef = db.ref("market/chart");
 
-  function renderChart(categories, seriesData) {
-    if (chart) {
-      chart.destroy();
-    }
-    var options = {
-      chart: {
-        type: 'line',
-        height: 350,
-        background: '#ffffff',
-        toolbar: { show: true }
-      },
-      stroke: { curve: 'smooth', width: 2 },
-      series: [{ name: 'Price', data: seriesData }],
-      xaxis: {
-        categories: categories,
-        labels: { rotate: -45 }
-      },
-      yaxis: {
-        labels: {
-          formatter: function (val) {
-            return (val % 0.5 === 0 && val !== 0) ? val.toFixed(1) : '';
+    chartRef.on("value", snap => {
+      const data = snap.val() || {};
+      const keys = Object.keys(data).sort();
+      const candles = keys.map((k, i) => ({
+        x: i,
+        y: [
+          parseFloat(data[k].open),
+          parseFloat(data[k].high),
+          parseFloat(data[k].low),
+          parseFloat(data[k].close)
+        ]
+      }));
+
+      tradesRef.once("value", tradeSnap => {
+        const trades = tradeSnap.val() || {};
+        const annotations = [];
+
+        for (let key in trades) {
+          const t = trades[key];
+          if (t.status !== "open") continue;
+
+          annotations.push({
+            y: t.entry,
+            borderColor: '#007bff',
+            label: {
+              borderColor: '#007bff',
+              style: { color: '#fff', background: '#007bff' },
+              text: `Entry ₹${t.entry}`
+            }
+          });
+
+          if (t.tp) {
+            annotations.push({
+              y: t.tp,
+              borderColor: '#28a745',
+              label: {
+                borderColor: '#28a745',
+                style: { color: '#fff', background: '#28a745' },
+                text: `TP ₹${t.tp}`
+              }
+            });
           }
-        },
-        tickAmount: 5,
-        min: 2,
-        max: 4
-      },
-      tooltip: {
-        y: { formatter: val => val.toFixed(2) }
-      }
-    };
-    chart = new ApexCharts(document.querySelector("#chart"), options);
-    chart.render();
+
+          if (t.sl) {
+            annotations.push({
+              y: t.sl,
+              borderColor: '#dc3545',
+              label: {
+                borderColor: '#dc3545',
+                style: { color: '#fff', background: '#dc3545' },
+                text: `SL ₹${t.sl}`
+              }
+            });
+          }
+        }
+
+        const chartOptions = {
+          chart: {
+            type: 'candlestick',
+            height: 400,
+            animations: { enabled: false },
+            toolbar: { autoSelected: 'pan', show: true },
+            zoom: { enabled: true }
+          },
+          series: [{ data: candles }],
+          xaxis: { type: 'category', labels: { show: false } },
+          yaxis: { labels: { formatter: val => '₹' + val.toFixed(2) } },
+          plotOptions: {
+            candlestick: {
+              colors: { upward: '#00B746', downward: '#EF403C' }
+            }
+          },
+          annotations: { yaxis: annotations }
+        };
+
+        const chartDiv = document.querySelector("#chart");
+        chartDiv.innerHTML = "";
+        const chart = new ApexCharts(chartDiv, chartOptions);
+        chart.render();
+      });
+    });
   }
 
-  // Listen for chart data from Firebase
-  db.ref("market/chart").on("value", (snapshot) => {
-    let data = snapshot.val();
-    if (!data || !Array.isArray(data)) {
-      console.warn("No valid data for chart");
-      return;
-    }
-    let categories = data.map(item => item.time);
-    let seriesData = data.map(item => item.price);
-    renderChart(categories, seriesData);
-  });
-
+  renderChart();
+  tradesRef.on("child_added", renderChart); // auto-refresh chart when new trade added
 </script>
 
 
 </body>
 
 </html>
+
 
 
 
