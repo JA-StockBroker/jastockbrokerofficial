@@ -209,42 +209,91 @@
 
   // Chart rendering with TP/SL/Entry lines
 let chart = null; // Store chart instance
-
-
-
 function renderChart(categories, seriesData) {
     var options = {
         chart: {
-            type: 'candlestick',
-            height: 350
+            type: 'line',
+            height: 350,
+            background: '#ffffff',
+            toolbar: {
+                show: true,
+                tools: {
+                    download: true,
+                    selection: true,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            }
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        grid: {
+            borderColor: '#e7e7e7',
+            row: {
+                colors: ['#f3f3f3', 'transparent'],
+                opacity: 0.5
+            }
+        },
+        colors: ['#FF5733'],
+        markers: {
+            size: 4,
+            colors: ['#fff'],
+            strokeColors: '#FF5733',
+            strokeWidth: 2,
+            hover: {
+                size: 6
+            }
         },
         series: [{
+            name: 'Price',
             data: seriesData
         }],
         xaxis: {
             type: 'category',
             categories: categories,
-            labels: { rotate: -45 }
+            labels: {
+                rotate: -45
+            },
+            axisBorder: { show: true },
+            axisTicks: { show: true }
         },
         yaxis: {
             tooltip: { enabled: true },
             labels: {
                 formatter: function (val) {
-                    return val.toFixed(1); // Always show 1 decimal place
+                    return (val % 0.5 === 0 && val !== 0) ? val.toFixed(1) : '';
                 }
             },
-            min: Math.floor(Math.min(...seriesData.map(c => c.low))),
-            max: Math.ceil(Math.max(...seriesData.map(c => c.high))),
-            tickAmount: Math.ceil((Math.ceil(Math.max(...seriesData.map(c => c.high))) -
-                                   Math.floor(Math.min(...seriesData.map(c => c.low)))) / 0.5)
+            tickAmount: 5,
+            min: 2,
+            max: 4
         },
-        annotations: { yaxis: [] }
+        annotations: {
+            yaxis: []
+        },
+        tooltip: {
+            enabled: true,
+            theme: 'dark',
+            y: {
+                formatter: function (val) {
+                    return val.toFixed(2);
+                }
+            }
+        },
+        legend: {
+            position: 'top',
+            horizontalAlign: 'center'
+        }
     };
 
     var chart = new ApexCharts(document.querySelector("#chart"), options);
     chart.render();
 }
-
 
 // Listen only once for changes
 db.ref("market/chart").on("value", renderChart);
@@ -254,6 +303,7 @@ tradesRef.on("value", renderChart);
 </body>
 
 </html>
+
 
 
 
