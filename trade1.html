@@ -207,9 +207,14 @@
     alert("Trade closed manually ✅");
   }
 
-  // Chart rendering with TP/SL/Entry lines
 let chart = null; // Store chart instance
+
 function renderChart(categories, seriesData) {
+    // Destroy old chart before rendering a new one
+    if (chart) {
+        chart.destroy();
+    }
+
     var options = {
         chart: {
             type: 'line',
@@ -291,18 +296,28 @@ function renderChart(categories, seriesData) {
         }
     };
 
-    var chart = new ApexCharts(document.querySelector("#chart"), options);
+    chart = new ApexCharts(document.querySelector("#chart"), options);
     chart.render();
 }
 
-// Listen only once for changes
-db.ref("market/chart").on("value", renderChart);
-tradesRef.on("value", renderChart);
+// Listen for chart data from Firebase
+db.ref("market/chart").on("value", (snapshot) => {
+    let data = snapshot.val();
+    if (!data) return;
+
+    // Extract categories & series from DB format
+    let categories = data.map(item => item.time);
+    let seriesData = data.map(item => item.price);
+
+    renderChart(categories, seriesData);
+});
+
  </script>
 
 </body>
 
 </html>
+
 
 
 
