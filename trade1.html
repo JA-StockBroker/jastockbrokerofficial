@@ -210,80 +210,41 @@
   // Chart rendering with TP/SL/Entry lines
 let chart = null; // Store chart instance
 
-function renderChart() {
-    Promise.all([
-        db.ref("market/chart").once("value"),
-        tradesRef.once("value")
-    ]).then(([chartSnap, tradesSnap]) => {
-        const rawData = chartSnap.val() || {};
-        const trades = tradesSnap.val() || {};
 
-        let candles = Object.values(rawData).map(c => ({
-            time: new Date(c.timestamp),
-            y: [c.open, c.high, c.low, c.close]
-        }));
 
-        // Sort candles by time
-        candles.sort((a, b) => a.time - b.time);
-
-        const categories = candles.map(c => c.time.toLocaleString());
-
-        const chartOptions = {
-            chart: {
-                type: 'candlestick',
-                height: 500,
-                toolbar: { 
-                    show: true, 
-                    tools: { pan: true, zoom: true, reset: true } 
-                },
-                zoom: { enabled: true, type: 'x', autoScaleYaxis: true },
-                animations: { enabled: false }
-            },
-            series: [{ data: candles.map(c => ({ x: c.time.toLocaleString(), y: c.y })) }],
-            xaxis: {
-                type: 'category',
-                categories: categories,
-                labels: { rotate: -45 }
-            },
-            yaxis: { tooltip: { enabled: true } },
-            annotations: { yaxis: [] }
-        };
-
-        // Add TP/SL/Entry lines
-        Object.values(trades).forEach(t => {
-            if (t.status === "open") {
-                chartOptions.annotations.yaxis.push({
-                    y: t.entry,
-                    borderColor: '#00E396',
-                    label: { text: `Entry ₹${t.entry}` }
-                });
-                if (t.tp) {
-                    chartOptions.annotations.yaxis.push({
-                        y: t.tp,
-                        borderColor: '#FEB019',
-                        label: { text: `TP ₹${t.tp}` }
-                    });
+function renderChart(categories, seriesData) {
+    var options = {
+        chart: {
+            type: 'candlestick',
+            height: 350
+        },
+        series: [{
+            data: seriesData
+        }],
+        xaxis: {
+            type: 'category',
+            categories: categories,
+            labels: { rotate: -45 }
+        },
+        yaxis: {
+            tooltip: { enabled: true },
+            labels: {
+                formatter: function (val) {
+                    return val.toFixed(1); // Always show 1 decimal place
                 }
-                if (t.sl) {
-                    chartOptions.annotations.yaxis.push({
-                        y: t.sl,
-                        borderColor: '#FF4560',
-                        label: { text: `SL ₹${t.sl}` }
-                    });
-                }
-            }
-        });
+            },
+            min: Math.floor(Math.min(...seriesData.map(c => c.low))),
+            max: Math.ceil(Math.max(...seriesData.map(c => c.high))),
+            tickAmount: Math.ceil((Math.ceil(Math.max(...seriesData.map(c => c.high))) -
+                                   Math.floor(Math.min(...seriesData.map(c => c.low)))) / 0.5)
+        },
+        annotations: { yaxis: [] }
+    };
 
-        // Destroy previous chart if exists
-        if (chart) {
-            chart.destroy();
-        }
-
-        // Create new chart
-        chart = new ApexCharts(document.querySelector("#chart"), chartOptions);
-        chart.render();
-    });
+    var chart = new ApexCharts(document.querySelector("#chart"), options);
+    chart.render();
 }
+
 
 // Listen only once for changes
 db.ref("market/chart").on("value", renderChart);
@@ -293,6 +254,7 @@ tradesRef.on("value", renderChart);
 </body>
 
 </html>
+
 
 
 
