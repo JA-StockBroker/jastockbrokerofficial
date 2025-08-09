@@ -208,11 +208,10 @@
   }
 
   // Chart rendering with TP/SL/Entry lines
-  function renderChart() {
+function renderChart() {
     const chartDiv = document.querySelector("#chart");
-    chartDiv.innerHTML = "";
+    chartDiv.innerHTML = ""; // Clear previous chart
 
-    // Always load candle data fresh from Firebase
     db.ref("market/chart").once("value", snap => {
         const rawData = snap.val() || {};
         const candles = Object.values(rawData).map(c => ({
@@ -220,40 +219,33 @@
             y: [c.open, c.high, c.low, c.close]
         }));
 
-        // Create base chart options
         const chartOptions = {
             chart: {
                 type: 'candlestick',
-                height: '100%',
-                width: '100%',
+                height: 500,
                 animations: { enabled: false },
-                toolbar: { show: true, tools: { pan: true, zoom: true } },
-                zoom: { enabled: true }
+                toolbar: { show: true, tools: { pan: true, zoom: true, reset: true } },
+                zoom: { enabled: true },
+                id: 'marketChart'
             },
             series: [{ data: candles }],
-            xaxis: {
-                type: 'datetime',
-                labels: { datetimeUTC: false }
-            },
+            xaxis: { type: 'datetime', labels: { datetimeUTC: false } },
             yaxis: {
                 tooltip: { enabled: true },
                 labels: { formatter: val => '₹' + val.toFixed(2) }
             },
-            annotations: { yaxis: [] } // will add lines later
+            annotations: { yaxis: [] }
         };
 
-        // Add TP/SL/Entry lines only if trades exist
         tradesRef.once("value", tradeSnap => {
             const trades = tradeSnap.val() || {};
             Object.values(trades).forEach(t => {
                 if (t.status === "open") {
-                    // Entry line
                     chartOptions.annotations.yaxis.push({
                         y: t.entry,
                         borderColor: '#00E396',
                         label: { text: `Entry ₹${t.entry}`, style: { background: '#00E396', color: '#fff' } }
                     });
-                    // TP line
                     if (t.tp) {
                         chartOptions.annotations.yaxis.push({
                             y: t.tp,
@@ -261,7 +253,6 @@
                             label: { text: `TP ₹${t.tp}`, style: { background: '#FEB019', color: '#fff' } }
                         });
                     }
-                    // SL line
                     if (t.sl) {
                         chartOptions.annotations.yaxis.push({
                             y: t.sl,
@@ -272,20 +263,21 @@
                 }
             });
 
-            // Render chart safely
             const chart = new ApexCharts(chartDiv, chartOptions);
             chart.render();
         });
     });
 }
 
-    renderChart();
-
+// Re-render chart when trades or market data changes
+db.ref("market/chart").on("value", renderChart);
+tradesRef.on("value", renderChart);
  </script>
 
 </body>
 
 </html>
+
 
 
 
