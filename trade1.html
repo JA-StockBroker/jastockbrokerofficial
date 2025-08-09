@@ -68,249 +68,322 @@
   </div>
 
 <script>
-  const config = {
-    apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
-    authDomain: "brokerja-74512.firebaseapp.com",
-    databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "brokerja-74512",
-    storageBucket: "brokerja-74512.appspot.com",
-    messagingSenderId: "1048821297447",
-    appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
-  };
-  firebase.initializeApp(config);
-  const db = firebase.database();
+/* ---------- CONFIG ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyAr63v10I56cCghOTrGV_KhjQ69HnyaP3Q",
+  authDomain: "brokerja-74512.firebaseapp.com",
+  databaseURL: "https://brokerja-74512-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "brokerja-74512",
+  storageBucket: "brokerja-74512.appspot.com",
+  messagingSenderId: "1048821297447",
+  appId: "1:1048821297447:web:b8a1e2c43b8ed8333b3902"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-  const user = sessionStorage.getItem("username");
-  if (!user) location.href = "login.html";
-  document.getElementById("usernameDisplay").innerText = user;
+/* ---------- DOM ELEMENTS (assumes these exist in your HTML) ---------- */
+const username = sessionStorage.getItem('username');
+if (!username) {
+  // If no username in session, redirect to login
+  location.href = "login.html";
+}
+document.getElementById('usernameDisplay').innerText = username;
 
-  const userRef = db.ref("users/" + user);
-  const priceRef = db.ref("market/currentPrice");
-  const marketRef = db.ref("market/isOpen");
-  const tradesRef = db.ref("users/" + user + "/trades");
-  let balance = 0;
-  let currentPrice = 1;
+const livePriceEl = document.getElementById('livePrice');
+const marketStatusEl = document.getElementById('marketStatus');
+const balanceEl = document.getElementById('balanceDisplay');
+const openTradesEl = document.getElementById('openTrades');
+const tradeHistoryEl = document.getElementById('tradeHistory');
+const totalTradesEl = document.getElementById('totalTrades');
+const winsEl = document.getElementById('wins');
+const lossesEl = document.getElementById('losses');
+const liveTimeEl = document.getElementById('liveTime'); // make sure exists in HTML
 
- // Live clock
-  function updateClock() {
-    const now = new Date();
-    document.getElementById("liveTime").innerText =
-      now.toLocaleTimeString("en-IN", { hour12: false });
+/* ---------- Firebase refs ---------- */
+const userRef = db.ref('users/' + username);
+const tradesRef = db.ref('users/' + username + '/trades');
+const balanceRef = db.ref('users/' + username + '/balance');
+const priceRef = db.ref('market/currentPrice');
+const marketOpenRef = db.ref('market/isOpen');
+const candlesRef = db.ref('market/chart');
+const withdrawalsRef = db.ref('users/' + username + '/withdrawalRequests');
+
+/* ---------- Chart (Lightweight Charts) ---------- */
+const chartContainer = document.getElementById('chart');
+const chart = LightweightCharts.createChart(chartContainer, {
+  layout: { background: { color: "#0e1621" }, textColor: "#d0d7de" },
+  rightPriceScale: { visible: true, borderColor: '#485c7b' },
+  timeScale: { timeVisible: true, secondsVisible: true, borderColor: '#485c7b' },
+  crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+  grid: { vertLines: { color: '#222a36' }, horzLines: { color: '#222a36' } }
+});
+const candleSeries = chart.addCandlestickSeries({
+  upColor: '#26a69a', downColor: '#ef5350', borderVisible: true, wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+});
+
+/* horizontal price lines for trades (store to remove later) */
+let entryPriceLine = null;
+let tpPriceLine = null;
+let slPriceLine = null;
+
+/* chart data store */
+let chartData = []; // { time: unixSeconds, open, high, low, close }
+const MAX_CANDLES = 200;
+
+/* ---------- Live clock ---------- */
+function startClock() {
+  if (!liveTimeEl) return;
+  function tick() { liveTimeEl.innerText = new Date().toLocaleTimeString('en-IN', { hour12: false }); }
+  tick();
+  setInterval(tick, 1000);
+}
+startClock();
+
+/* ---------- Helpers ---------- */
+function toLwcTime(ms) { return Math.floor(ms / 1000); } // convert ms timestamp to seconds for lightweight-charts
+
+function applyTradeLines(entry, tp, sl) {
+  // remove existing lines
+  removeTradeLines();
+  if (entry !== undefined && entry !== null) {
+    entryPriceLine = candleSeries.createPriceLine({ price: entry, color: '#00aaff', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'Entry' });
   }
-  setInterval(updateClock, 1000);
-  updateClock();
-  
-  // Live price updates
-  priceRef.on("value", snap => {
-    currentPrice = parseFloat(snap.val() || 1);
-    document.getElementById("livePrice").innerText = currentPrice.toFixed(2);
-    updateOpenTrades();
+  if (tp !== undefined && tp !== null) {
+    tpPriceLine = candleSeries.createPriceLine({ price: tp, color: '#00ff7f', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'TP' });
+  }
+  if (sl !== undefined && sl !== null) {
+    slPriceLine = candleSeries.createPriceLine({ price: sl, color: '#ff4d4d', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'SL' });
+  }
+}
+function removeTradeLines() {
+  try { if (entryPriceLine) { candleSeries.removePriceLine(entryPriceLine); entryPriceLine = null; } } catch(e){}
+  try { if (tpPriceLine) { candleSeries.removePriceLine(tpPriceLine); tpPriceLine = null; } } catch(e){}
+  try { if (slPriceLine) { candleSeries.removePriceLine(slPriceLine); slPriceLine = null; } } catch(e){}
+}
+
+/* ---------- Candle handling ---------- */
+candlesRef.on('value', snap => {
+  const raw = snap.val() || {};
+  // convert to array and sort by timestamp
+  const arr = Object.values(raw)
+    .map(c => ({ time: toLwcTime(c.timestamp), open: c.open, high: c.high, low: c.low, close: c.close }))
+    .sort((a,b) => a.time - b.time);
+
+  // keep last MAX_CANDLES
+  chartData = arr.slice(-MAX_CANDLES);
+  // set data to series
+  candleSeries.setData(chartData);
+  // auto-scroll to latest
+  chart.timeScale().scrollToRealTime();
+});
+
+/* ---------- Live price & market status ---------- */
+priceRef.on('value', snap => {
+  const p = parseFloat(snap.val() || 1);
+  currentPrice = p;
+  if (livePriceEl) livePriceEl.innerText = p.toFixed(2);
+  // check open trades for TP/SL closure
+  checkAutoCloseTrades(p);
+});
+
+marketOpenRef.on('value', snap => {
+  const v = snap.val();
+  if (marketStatusEl) marketStatusEl.innerText = v ? '✅ Open' : '❌ Closed';
+});
+
+/* ---------- Balance listener ---------- */
+let balance = 0;
+balanceRef.on('value', snap => {
+  balance = parseFloat(snap.val() || 0);
+  if (balanceEl) balanceEl.innerText = (isNaN(balance) ? 0 : balance.toFixed(2));
+});
+
+/* ---------- Place trade (called by button) ---------- */
+async function placeTrade(side) {
+  const qty = parseInt(document.getElementById('qty').value || 0);
+  const tp = parseFloat(document.getElementById('tp').value || 0);
+  const sl = parseFloat(document.getElementById('sl').value || 0);
+
+  // market open and balance checks
+  const marketSnap = await marketOpenRef.once('value');
+  if (!marketSnap.val()) return alert('Market is closed');
+  if (balance < 5.0) return alert('Insufficient balance to trade.');
+
+  // validate TP/SL relative to entry
+  const entry = currentPrice;
+  if (side === 'buy') {
+    if (!tp || !sl) return alert('Enter TP and SL');
+    if (!(tp > entry && sl < entry)) return alert('For BUY: TP must be > entry, SL must be < entry');
+  } else {
+    if (!tp || !sl) return alert('Enter TP and SL');
+    if (!(tp < entry && sl > entry)) return alert('For SELL: TP must be < entry, SL must be > entry');
+  }
+
+  // create trade and deduct trade fee ₹1
+  const tradeObj = { side, qty, entry, tp, sl, status: 'open', time: Date.now() };
+  const newRef = await tradesRef.push(tradeObj);
+
+  // deduct fee
+  await balanceRef.set((parseFloat(balance) || 0) - 1);
+
+  // draw lines for user
+  applyTradeLines(entry, tp, sl);
+  alert('Trade placed ✅');
+}
+
+/* ---------- Auto-close logic for trades at TP/SL ---------- */
+async function checkAutoCloseTrades(latestPrice) {
+  // iterate user's open trades and close those hitting TP or SL
+  const snap = await tradesRef.once('value');
+  const trades = snap.val() || {};
+  for (const key in trades) {
+    const t = trades[key];
+    if (t.status !== 'open') continue;
+
+    let hitTP = false, hitSL = false;
+    if (t.side === 'buy') {
+      if (t.tp !== undefined && latestPrice >= t.tp) hitTP = true;
+      if (t.sl !== undefined && latestPrice <= t.sl) hitSL = true;
+    } else { // sell
+      if (t.tp !== undefined && latestPrice <= t.tp) hitTP = true;
+      if (t.sl !== undefined && latestPrice >= t.sl) hitSL = true;
+    }
+
+    if (hitTP || hitSL) {
+      // calculate pnl (positive for profit, negative for loss)
+      const exitPrice = hitTP ? t.tp : t.sl;
+      const pnl = (t.side === 'buy' ? (exitPrice - t.entry) : (t.entry - exitPrice)) * (t.qty || 1);
+
+      // mark closed and update pnl
+      await tradesRef.child(key).update({ status: 'closed', pnl: pnl, closedAt: Date.now() });
+
+      // update balance: add pnl (if pnl negative, balance will decrease)
+      const currentBalSnap = await balanceRef.once('value');
+      const currentBal = parseFloat(currentBalSnap.val() || 0);
+      await balanceRef.set(currentBal + pnl);
+
+      // remove trade lines if no other open trades (rebuild lines from remaining opens)
+      rebuildTradeLinesFromOpen();
+    }
+  }
+
+  // refresh local UI
+  refreshTradesUI();
+}
+
+/* ---------- Manual close (button) ---------- */
+async function manualClose(tradeKey) {
+  const tSnap = await tradesRef.child(tradeKey).once('value');
+  const t = tSnap.val();
+  if (!t || t.status !== 'open') return alert('Trade not open');
+
+  // use currentPrice as exit
+  const exitPrice = currentPrice;
+  const pnl = (t.side === 'buy' ? (exitPrice - t.entry) : (t.entry - exitPrice)) * (t.qty || 1);
+  await tradesRef.child(tradeKey).update({ status: 'closed', pnl, closedAt: Date.now() });
+
+  // update balance
+  const currentBalSnap = await balanceRef.once('value');
+  const currentBal = parseFloat(currentBalSnap.val() || 0);
+  await balanceRef.set(currentBal + pnl);
+
+  rebuildTradeLinesFromOpen();
+  refreshTradesUI();
+  alert('Trade manually closed ✅');
+}
+
+/* ---------- Rebuild trade lines from remaining open trades ---------- */
+async function rebuildTradeLinesFromOpen() {
+  const snap = await tradesRef.once('value');
+  const trades = snap.val() || {};
+  // find ONE open trade to display its lines (if multiple open you may want to overlay — adjust logic if desired)
+  let one = null;
+  for (const k in trades) { if (trades[k].status === 'open') { one = trades[k]; break; } }
+  if (one) applyTradeLines(one.entry, one.tp, one.sl);
+  else removeTradeLines();
+}
+
+/* ---------- UI refresh for trades & history ---------- */
+async function refreshTradesUI() {
+  const snap = await tradesRef.once('value');
+  const trades = snap.val() || {};
+
+  openTradesEl.innerHTML = '';
+  tradeHistoryEl.innerHTML = '';
+
+  let wins = 0, losses = 0, total = 0;
+  for (const key in trades) {
+    const t = trades[key];
+    if (t.status === 'open') {
+      const pnlNow = ((t.side === 'buy' ? currentPrice - t.entry : t.entry - currentPrice) * (t.qty || 1)).toFixed(2);
+      const div = document.createElement('div');
+      div.className = 'trade-card';
+      div.innerHTML = `
+        <strong>${t.side.toUpperCase()}</strong> | Entry: ₹${t.entry.toFixed(2)} | Qty: ${t.qty || 1}<br>
+        TP: ₹${t.tp} | SL: ₹${t.sl}<br>
+        Live P&L: ₹${pnlNow} <br>
+        <button onclick="manualClose('${key}')">Close</button>
+      `;
+      openTradesEl.appendChild(div);
+    } else {
+      total++;
+      if ((t.pnl || 0) > 0) wins++; else losses++;
+      const div = document.createElement('div');
+      div.className = 'trade-card';
+      div.innerHTML = `
+        <strong>${t.side.toUpperCase()}</strong> | Entry: ₹${t.entry.toFixed(2)} | Qty: ${t.qty || 1}<br>
+        TP: ₹${t.tp} | SL: ₹${t.sl}<br>
+        Result P&L: ₹${(t.pnl || 0).toFixed(2)}
+      `;
+      tradeHistoryEl.appendChild(div);
+    }
+  }
+  totalTradesEl.innerText = total;
+  winsEl.innerText = wins;
+  lossesEl.innerText = losses;
+}
+
+/* ---------- Withdrawal request ---------- */
+async function requestWithdrawal() {
+  const amount = parseFloat(document.getElementById('withdrawAmt').value || 0);
+  const phone = document.getElementById('withdrawPhone').value || '';
+  if (!amount || !phone) return alert('Fill amount and WhatsApp number');
+  // push request under user's node
+  await withdrawalsRef.push({ amount, contact: phone, status: 'pending', timestamp: Date.now() });
+  alert('Withdrawal request sent. Process: 2 business days. 2% fee will apply.');
+}
+
+/* ---------- Fullscreen helper ---------- */
+function toggleFullscreen() {
+  const el = document.getElementById('chart');
+  if (!document.fullscreenElement) return el.requestFullscreen?.();
+  document.exitFullscreen?.();
+}
+
+/* ---------- Initial UI boot and listeners ---------- */
+(async function init() {
+  // attach global functions for buttons used inline in HTML (if any)
+  window.placeTrade = placeTrade;
+  window.manualClose = manualClose;
+  window.requestWithdrawal = requestWithdrawal;
+  window.toggleFullscreen = toggleFullscreen;
+
+  // refresh UI whenever trades update
+  tradesRef.on('value', snap => {
+    refreshTradesUI();
+    // rebuild lines if needed
+    rebuildTradeLinesFromOpen();
   });
 
-  // Market status
-  marketRef.on("value", snap => {
-    document.getElementById("marketStatus").innerText = snap.val() ? "✅ Open" : "❌ Closed";
-  });
-
-  // Balance
-  userRef.child("balance").on("value", snap => {
-    balance = parseFloat(snap.val() || 0);
-    document.getElementById("balanceDisplay").innerText = balance.toFixed(2);
-  });
-
-  // Place trade
-  function placeTrade(type) {
-    marketRef.once("value", snap => {
-      if (!snap.val()) return alert("Market is closed");
-      if (balance < 5) return alert("Insufficient balance to trade.");
-
-      const qty = parseInt(document.getElementById("qty").value);
-      const tp = parseFloat(document.getElementById("tp").value);
-      const sl = parseFloat(document.getElementById("sl").value);
-      const entry = currentPrice;
-
-      if (type === 'buy' && (tp <= entry || sl >= entry)) return alert("Invalid TP/SL for Buy");
-      if (type === 'sell' && (tp >= entry || sl <= entry)) return alert("Invalid TP/SL for Sell");
-
-      const trade = { type, qty, entry, tp, sl, status: "open", time: Date.now() };
-      tradesRef.push(trade);
-      userRef.child("balance").set(balance - 1);
-      alert("Trade placed ✅");
-    });
-  }
-
-  // Logout
-  function logout() {
-    sessionStorage.clear();
-    location.href = "login.html";
-  }
-
-  // Withdrawal
-  function requestWithdrawal() {
-    const amount = parseFloat(document.getElementById("withdrawAmt").value);
-    const phone = document.getElementById("withdrawPhone").value;
-    if (!amount || !phone) return alert("Fill all fields");
-    db.ref("users/" + user + "/withdrawalRequests").push({ amount, phone, status: "pending", time: Date.now() });
-    alert("Withdrawal will be processed in 2 business days ✅");
-  }
-
-  // Update open trades
-  function updateOpenTrades() {
-    tradesRef.once("value", snap => {
-      const data = snap.val() || {};
-      const openBox = document.getElementById("openTrades");
-      const histBox = document.getElementById("tradeHistory");
-      openBox.innerHTML = "";
-      histBox.innerHTML = "";
-      let wins = 0, losses = 0, total = 0;
-
-      for (let key in data) {
-        const t = data[key];
-        if (t.status === "closed") {
-          total++;
-          if (t.pnl > 0) wins++; else losses++;
-          histBox.innerHTML += `<div class='trade-card'>${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>TP: ${t.tp} | SL: ${t.sl}<br>P&L: ₹${t.pnl?.toFixed(2)}</div>`;
-          continue;
-        }
-
-        let close = false;
-        if (t.tp && ((t.type === 'buy' && currentPrice >= t.tp) || (t.type === 'sell' && currentPrice <= t.tp))) close = true;
-        if (t.sl && ((t.type === 'buy' && currentPrice <= t.sl) || (t.type === 'sell' && currentPrice >= t.sl))) close = true;
-
-        if (close) {
-          const pnl = (t.type === 'buy' ? (currentPrice - t.entry) : (t.entry - currentPrice)) * t.qty;
-          tradesRef.child(key).update({ status: "closed", pnl });
-          userRef.child("balance").set(balance + pnl);
-          continue;
-        }
-
-        const pnl = ((t.type === 'buy' ? currentPrice - t.entry : t.entry - currentPrice) * t.qty).toFixed(2);
-
-        openBox.innerHTML += `
-          <div class="trade-card">
-            ${t.type} | Entry: ₹${t.entry} | Qty: ${t.qty}<br>
-            TP: ${t.tp} | SL: ${t.sl}<br>
-            Live P&L: ₹${pnl}<br>
-            <button onclick="manualClose('${key}', ${pnl})">❌ Close</button>
-          </div>
-        `;
-      }
-      document.getElementById("totalTrades").innerText = total;
-      document.getElementById("wins").innerText = wins;
-      document.getElementById("losses").innerText = losses;
-    });
-  }
-
-  function manualClose(key, pnl) {
-    tradesRef.child(key).update({ status: "closed", pnl });
-    userRef.child("balance").set(balance + parseFloat(pnl));
-    alert("Trade closed manually ✅");
-  }
-
-  // Chart rendering with TP/SL/Entry lines
-  function renderChart() {
-    const chartRef = db.ref("market/chart");
-
-    chartRef.on("value", snap => {
-      const data = snap.val() || {};
-      const keys = Object.keys(data).sort();
-      const candles = keys.map((k, i) => ({
-        x: i, // sequential index instead of timestamp
-        y: [
-          parseFloat(data[k].open),
-          parseFloat(data[k].high),
-          parseFloat(data[k].low),
-          parseFloat(data[k].close)
-        ]
-      }));
-
-      tradesRef.once("value", tradeSnap => {
-        const trades = tradeSnap.val() || {};
-        const annotations = [];
-
-        for (let key in trades) {
-          const t = trades[key];
-          if (t.status !== "open") continue;
-
-          // Entry line
-          annotations.push({
-            y: t.entry,
-            borderColor: '#007bff',
-            label: {
-              borderColor: '#007bff',
-              style: { color: '#fff', background: '#007bff' },
-              text: Entry `₹${t.entry}`
-            }
-          });
-
-          // TP line
-          if (t.tp) {
-            annotations.push({
-              y: t.tp,
-              borderColor: '#28a745',
-              label: {
-                borderColor: '#28a745',
-                style: { color: '#fff', background: '#28a745' },
-                text: TP `₹${t.tp}`
-              }
-            });
-          }
-
-          // SL line
-          if (t.sl) {
-            annotations.push({
-              y: t.sl,
-              borderColor: '#dc3545',
-              label: {
-                borderColor: '#dc3545',
-                style: { color: '#fff', background: '#dc3545' },
-                text: SL `₹${t.sl}`
-              }
-            });
-          }
-        }
-
-        const chartOptions = {
-          chart: {
-            type: 'candlestick',
-            height: 400,
-            animations: { enabled: false },
-            toolbar: { autoSelected: 'pan', show: true },
-            zoom: { enabled: true }
-          },
-          series: [{ data: candles }],
-          xaxis: {
-            type: 'category',
-            labels: { show: false }
-          },
-          yaxis: {
-            labels: {
-              formatter: val => '₹' + val.toFixed(2)
-            }
-          },
-          plotOptions: {
-            candlestick: {
-              colors: { upward: '#00B746', downward: '#EF403C' }
-            }
-          },
-          annotations: { yaxis: annotations }
-        };
-
-        const chartDiv = document.querySelector("#chart");
-        chartDiv.innerHTML = "";
-        const chart = new ApexCharts(chartDiv, chartOptions);
-        chart.render();
-      });
-    });
-  }
-
-  renderChart();
+  // initial refresh
+  refreshTradesUI();
+  rebuildTradeLinesFromOpen();
+})();
 </script>
-
-
 </body>
 
 </html>
+
 
 
 
