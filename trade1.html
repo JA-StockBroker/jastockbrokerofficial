@@ -92,13 +92,18 @@
   let currentPrice = 1;
 
  // Live clock
-  function updateClock() {
-    const now = new Date();
-    document.getElementById("liveTime").innerText =
-      now.toLocaleTimeString("en-IN", { hour12: false });
-  }
-  setInterval(updateClock, 1000);
-  updateClock();
+function updateClock() {
+    let now = new Date();
+    let hours = now.getHours();
+    let minutes = String(now.getMinutes()).padStart(2, '0');
+    let seconds = String(now.getSeconds()).padStart(2, '0');
+    let ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12; // convert to 12hr format
+    document.getElementById('clock').textContent = 
+        `${hours}:${minutes}:${seconds} ${ampm}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
   
   // Live price updates
   priceRef.on("value", snap => {
@@ -210,7 +215,6 @@
 let chart = null; // Store chart instance
 
 function renderChart(categories, seriesData) {
-    // Destroy old chart before rendering a new one
     if (chart) {
         chart.destroy();
     }
@@ -220,55 +224,15 @@ function renderChart(categories, seriesData) {
             type: 'line',
             height: 350,
             background: '#ffffff',
-            toolbar: {
-                show: true,
-                tools: {
-                    download: true,
-                    selection: true,
-                    zoom: true,
-                    zoomin: true,
-                    zoomout: true,
-                    pan: true,
-                    reset: true
-                }
-            }
+            toolbar: { show: true }
         },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        grid: {
-            borderColor: '#e7e7e7',
-            row: {
-                colors: ['#f3f3f3', 'transparent'],
-                opacity: 0.5
-            }
-        },
-        colors: ['#FF5733'],
-        markers: {
-            size: 4,
-            colors: ['#fff'],
-            strokeColors: '#FF5733',
-            strokeWidth: 2,
-            hover: {
-                size: 6
-            }
-        },
-        series: [{
-            name: 'Price',
-            data: seriesData
-        }],
+        stroke: { curve: 'smooth', width: 2 },
+        series: [{ name: 'Price', data: seriesData }],
         xaxis: {
-            type: 'category',
             categories: categories,
-            labels: {
-                rotate: -45
-            },
-            axisBorder: { show: true },
-            axisTicks: { show: true }
+            labels: { rotate: -45 }
         },
         yaxis: {
-            tooltip: { enabled: true },
             labels: {
                 formatter: function (val) {
                     return (val % 0.5 === 0 && val !== 0) ? val.toFixed(1) : '';
@@ -278,21 +242,8 @@ function renderChart(categories, seriesData) {
             min: 2,
             max: 4
         },
-        annotations: {
-            yaxis: []
-        },
         tooltip: {
-            enabled: true,
-            theme: 'dark',
-            y: {
-                formatter: function (val) {
-                    return val.toFixed(2);
-                }
-            }
-        },
-        legend: {
-            position: 'top',
-            horizontalAlign: 'center'
+            y: { formatter: val => val.toFixed(2) }
         }
     };
 
@@ -300,23 +251,27 @@ function renderChart(categories, seriesData) {
     chart.render();
 }
 
-// Listen for chart data from Firebase
+// Listen for data from Firebase
 db.ref("market/chart").on("value", (snapshot) => {
     let data = snapshot.val();
-    if (!data) return;
+    console.log("Chart Data from Firebase:", data); // 🔍 Debug log
 
-    // Extract categories & series from DB format
+    if (!data || !Array.isArray(data)) {
+        console.warn("No valid data for chart");
+        return;
+    }
+
     let categories = data.map(item => item.time);
     let seriesData = data.map(item => item.price);
 
     renderChart(categories, seriesData);
 });
-
  </script>
 
 </body>
 
 </html>
+
 
 
 
