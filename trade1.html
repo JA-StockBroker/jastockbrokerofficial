@@ -210,26 +210,34 @@
   // Chart rendering with TP/SL/Entry lines
 function renderChart() {
     const chartDiv = document.querySelector("#chart");
-    chartDiv.innerHTML = ""; // Clear previous chart
+    chartDiv.innerHTML = ""; 
 
     db.ref("market/chart").once("value", snap => {
         const rawData = snap.val() || {};
-        const candles = Object.values(rawData).map(c => ({
-            x: new Date(c.timestamp),
+        let candles = Object.values(rawData).map(c => ({
+            time: new Date(c.timestamp),
             y: [c.open, c.high, c.low, c.close]
         }));
+
+        // Sort by time so candles are in correct order
+        candles.sort((a, b) => a.time - b.time);
+
+        // Convert time to readable format for category axis
+        const categories = candles.map(c => c.time.toLocaleString());
 
         const chartOptions = {
             chart: {
                 type: 'candlestick',
                 height: 500,
-                animations: { enabled: false },
                 toolbar: { show: true, tools: { pan: true, zoom: true, reset: true } },
-                zoom: { enabled: true },
-                id: 'marketChart'
+                animations: { enabled: false }
             },
-            series: [{ data: candles }],
-            xaxis: { type: 'datetime', labels: { datetimeUTC: false } },
+            series: [{ data: candles.map(c => ({ x: c.time.toLocaleString(), y: c.y })) }],
+            xaxis: {
+                type: 'category',
+                categories: categories,
+                labels: { rotate: -45 }
+            },
             yaxis: {
                 tooltip: { enabled: true },
                 labels: { formatter: val => '₹' + val.toFixed(2) }
@@ -237,6 +245,7 @@ function renderChart() {
             annotations: { yaxis: [] }
         };
 
+        // Add TP/SL/Entry lines
         tradesRef.once("value", tradeSnap => {
             const trades = tradeSnap.val() || {};
             Object.values(trades).forEach(t => {
@@ -268,8 +277,6 @@ function renderChart() {
         });
     });
 }
-
-// Re-render chart when trades or market data changes
 db.ref("market/chart").on("value", renderChart);
 tradesRef.on("value", renderChart);
  </script>
@@ -277,6 +284,7 @@ tradesRef.on("value", renderChart);
 </body>
 
 </html>
+
 
 
 
